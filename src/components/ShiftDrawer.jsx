@@ -29,7 +29,7 @@ export default function ShiftDrawer({ open, onClose, jobs, members, selectedDate
                       fullWidth variant="contained" 
                       onClick={() => onAddShift(job)}
                       sx={{ 
-                        bgcolor: job.color, height: 60, // 高さを少し広げた
+                        bgcolor: job.color, height: 60, 
                         display: 'flex', flexDirection: 'column', justifyContent: 'center',
                         boxShadow: 'none', '&:hover': { bgcolor: job.color, opacity: 0.9 }
                       }}

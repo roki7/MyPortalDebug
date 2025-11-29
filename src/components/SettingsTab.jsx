@@ -7,7 +7,7 @@ import {
   FormControl, InputLabel, Select, MenuItem, Divider, 
   FormControlLabel, Switch, Chip, Grid
 } from '@mui/material';
-import { Delete, Add, Work, CalendarMonth, Edit, LocationOn, Person, Settings } from '@mui/icons-material';
+import { Delete, Add, Work, CalendarMonth, Edit } from '@mui/icons-material';
 import { PREFECTURES } from '../data';
 
 export default function SettingsTab({ 
@@ -24,7 +24,7 @@ export default function SettingsTab({
     id: null, name: '', type: 'hourly', value: '', color: '#1976d2', 
     days: [], skipHolidays: false, memberId: members[0]?.id || 'me',
     cutoffDay: 31, payDay: 25,
-    defaultStart: '09:00', defaultEnd: '17:00', defaultBreakTime: 60 // 休憩追加
+    defaultStart: '09:00', defaultEnd: '17:00', defaultBreakTime: 60
   };
   const [editingJob, setEditingJob] = useState(initialJobState);
 
@@ -71,7 +71,6 @@ export default function SettingsTab({
         <CardContent>
           <Typography variant="h6" gutterBottom>⚙ アプリ設定</Typography>
           
-          {/* ★復活: 計算モード */}
           <FormControl fullWidth sx={{ mb: 2 }}>
             <InputLabel>給与計算のタイミング</InputLabel>
             <Select 
@@ -187,7 +186,6 @@ export default function SettingsTab({
             <Grid item xs={6}>
                 <TextField label="終了時間" type="time" size="small" fullWidth InputLabelProps={{shrink:true}} value={editingJob.defaultEnd || '17:00'} onChange={(e)=>setEditingJob({...editingJob, defaultEnd:e.target.value})} />
             </Grid>
-            {/* ★休憩時間 */}
             <Grid item xs={6}>
                 <TextField label="休憩(分)" type="number" size="small" fullWidth value={editingJob.defaultBreakTime} onChange={(e)=>setEditingJob({...editingJob, defaultBreakTime:e.target.value})} />
             </Grid>
