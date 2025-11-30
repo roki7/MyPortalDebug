@@ -19,7 +19,11 @@ const isShiftInTargetMonth = (shiftDate, targetDate, cutoffDay) => {
 
 // 1. シフト1件の給与計算 (休憩時間対応)
 export const calculateShiftWage = (shift, job) => {
-  if (!job) return 0;
+  if (!job) {
+     if (shift.jobId === 'custom') return shift.amount || 0;
+     return 0;
+  }
+
   if (shift.status === 'absence') return 0; 
 
   if (job.type === 'hourly') {
@@ -74,13 +78,17 @@ export const calculateMonthlyEarnings = (shifts, jobs, currentDate, calcMode) =>
   });
 
   // シフト
-  Object.entries(shifts).forEach(([dateStr, dayShifts]) => {
+ Object.entries(shifts).forEach(([dateStr, dayShifts]) => {
     const shiftDate = new Date(dateStr);
     dayShifts.forEach(shift => {
-      const job = jobs.find(j => j.id === shift.jobId);
-      if (!job) return;
+      let job = jobs.find(j => j.id === shift.jobId);
+      
+      // ★修正: 単発シフト('custom')の場合、仮のjobオブジェクトを作る
+      if (!job && shift.jobId === 'custom') {
+          job = { id: 'custom', type: 'manual', cutoffDay: 31 }; // デフォルト末日締め扱い
+      }
 
-      // 締め日チェック: このシフトは今月の給与に入るか？
+      if (!job) return;
       if (!isShiftInTargetMonth(shiftDate, currentDate, job.cutoffDay)) return;
 
       if (shift.status !== 'absence') workDays++;
@@ -88,23 +96,20 @@ export const calculateMonthlyEarnings = (shifts, jobs, currentDate, calcMode) =>
       const fullWage = calculateShiftWage(shift, job);
       projected += fullWage; 
 
-      // 確定額計算
       if (shift.status === 'absence') return;
       if (shift.status === 'paid_leave') { fixed += fullWage; return; }
-      
-      // 昨日までなら確定
       if (isBefore(shiftDate, todayStart)) { fixed += fullWage; return; }
 
-      // 今日の場合
       if (isSameDay(shiftDate, now)) {
         if (calcMode === 'upfront') {
             fixed += fullWage;
         } else if (calcMode === 'completed') {
-            const end = set(shiftDate, { hours: parseInt(shift.end.split(':')[0]), minutes: parseInt(shift.end.split(':')[1]) });
+            const end = set(shiftDate, { hours: parseInt(shift.end.split(':')[0] || '0'), minutes: parseInt(shift.end.split(':')[1] || '0') });
             if (isBefore(end, now)) fixed += fullWage;
         } else {
-            // リアルタイム
+            // リアルタイム (単発は手入力なので全額計上または0だが、ここでは時間経過を見れないので全額)
             if (job.type === 'hourly') {
+                // ... (時給計算ロジックそのまま) ...
                 const start = set(shiftDate, { hours: parseInt(shift.start.split(':')[0]), minutes: parseInt(shift.start.split(':')[1]) });
                 const end = set(shiftDate, { hours: parseInt(shift.end.split(':')[0]), minutes: parseInt(shift.end.split(':')[1]) });
                 if (isBefore(now, start)) { } 
@@ -116,7 +121,7 @@ export const calculateMonthlyEarnings = (shifts, jobs, currentDate, calcMode) =>
                     fixed += Math.floor(fullWage * progress);
                 }
             } else {
-                 const end = set(shiftDate, { hours: parseInt(shift.end.split(':')[0]), minutes: parseInt(shift.end.split(':')[1]) });
+                 const end = set(shiftDate, { hours: parseInt(shift.end?.split(':')[0] || '17'), minutes: parseInt(shift.end?.split(':')[1] || '0') });
                  if (isBefore(end, now)) fixed += fullWage;
             }
         }
@@ -126,18 +131,17 @@ export const calculateMonthlyEarnings = (shifts, jobs, currentDate, calcMode) =>
   return { fixed: Math.floor(fixed), projected: Math.floor(projected), workDays };
 };
 
-// 3. 年収計算
 export const calculateAnnualIncome = (shifts, jobs, currentYearDate) => {
   let total = 0;
   const start = startOfYear(currentYearDate);
   const end = endOfYear(currentYearDate);
   jobs.forEach(job => { if (job.type === 'monthly') total += (parseInt(job.value) * 12); });
-  
   Object.entries(shifts).forEach(([dateStr, dayShifts]) => {
     const date = new Date(dateStr);
     if (isWithinInterval(date, { start, end })) {
       dayShifts.forEach(shift => {
-        const job = jobs.find(j => j.id === shift.jobId);
+        let job = jobs.find(j => j.id === shift.jobId);
+        if (!job && shift.jobId === 'custom') job = { type: 'manual' }; // ★単発対応
         if (job) total += calculateShiftWage(shift, job);
       });
     }
@@ -145,7 +149,6 @@ export const calculateAnnualIncome = (shifts, jobs, currentYearDate) => {
   return total;
 };
 
-// 4. 年間サマリー (締め日考慮)
 export const getAnnualSummary = (shifts, jobs, currentYearDate, calcMode) => {
   const start = startOfYear(currentYearDate);
   const summary = [];
@@ -158,9 +161,10 @@ export const getAnnualSummary = (shifts, jobs, currentYearDate, calcMode) => {
   Object.entries(shifts).forEach(([dateStr, dayShifts]) => {
     const shiftDate = new Date(dateStr);
     dayShifts.forEach(shift => {
-        const job = jobs.find(j => j.id === shift.jobId);
+        let job = jobs.find(j => j.id === shift.jobId);
+        if (!job && shift.jobId === 'custom') job = { type: 'manual', cutoffDay: 31 }; // ★単発対応
         if (!job) return;
-        // 全月を走査して正しい月に加算
+        
         summary.forEach((monthData) => {
             if (isShiftInTargetMonth(shiftDate, monthData.dateObj, job.cutoffDay)) {
                 monthData.income += calculateShiftWage(shift, job);

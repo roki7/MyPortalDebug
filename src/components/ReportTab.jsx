@@ -1,103 +1,113 @@
 // src/components/ReportTab.jsx
 import React from 'react';
-import { 
-  Box, Typography, Card, CardContent, LinearProgress, Grid, 
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
-  Divider
-} from '@mui/material';
-import { AccountBalanceWallet, TrendingUp, CalendarMonth } from '@mui/icons-material';
+import { Box, Typography, Card, CardContent, Grid, LinearProgress, Divider, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper } from '@mui/material';
+import { AttachMoney, Savings, AccountBalanceWallet, TrendingUp, Assessment, CalendarMonth } from '@mui/icons-material';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function ReportTab({ annualIncome, summary, targetLimit, accounts, totalFixedCost }) {
-  
-  // 扶養の壁計算
-  const remaining = targetLimit - annualIncome;
-  const progress = Math.min(100, Math.max(0, (annualIncome / targetLimit) * 100));
-  let progressColor = "primary";
-  if (progress > 80) progressColor = "warning";
-  if (progress > 95) progressColor = "error";
+  const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
+  const remainingToLimit = Math.max(0, targetLimit - annualIncome);
+  const monthlyAverage = annualIncome / 12;
 
-  // 総資産計算
-  const totalAssets = accounts.reduce((sum, acc) => sum + acc.balance, 0);
+  const chartData = summary.map(item => ({
+    name: item.month,
+    収入: item.income,
+  }));
 
   return (
     <Box>
-      {/* 1. 扶養・年収の壁 */}
-      <Card sx={{ mb: 2, bgcolor: '#f5f5f5' }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom sx={{display:'flex', alignItems:'center'}}>
-            <TrendingUp sx={{mr:1}}/> 年収・扶養チェック
-          </Typography>
-          
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-            <Typography variant="body2">現在のみこみ年収</Typography>
-            <Typography variant="h6" fontWeight="bold">¥{annualIncome.toLocaleString()}</Typography>
-          </Box>
-          
-          <LinearProgress 
-            variant="determinate" value={progress} color={progressColor} 
-            sx={{ height: 15, borderRadius: 5, mb: 1 }} 
-          />
-          
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Typography variant="caption" color="textSecondary">上限: ¥{targetLimit.toLocaleString()}</Typography>
-            <Typography variant="subtitle2" color={remaining < 0 ? "error" : "primary"} fontWeight="bold">
-              {remaining >= 0 ? `あと ¥${remaining.toLocaleString()} 稼げます` : `¥${Math.abs(remaining).toLocaleString()} オーバーです！`}
-            </Typography>
-          </Box>
-        </CardContent>
-      </Card>
+      <Typography variant="h6" gutterBottom sx={{display:'flex', alignItems:'center'}}>
+        <Assessment sx={{ mr: 1 }} /> 年間分析レポート
+      </Typography>
 
-      {/* 2. 家計・資産サマリー */}
+      {/* 1. サマリーカード */}
+      <Grid container spacing={2} sx={{ mb: 2 }}>
+        <Grid item xs={12} sm={6}>
+          <Card sx={{ bgcolor: '#e3f2fd' }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography variant="subtitle2" color="textSecondary">💰 現在の世帯年収</Typography>
+                <TrendingUp color="primary" />
+              </Box>
+              <Typography variant="h4" fontWeight="bold">¥{annualIncome.toLocaleString()}</Typography>
+              <Typography variant="caption">月平均: ¥{Math.floor(monthlyAverage).toLocaleString()}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} sm={6}>
+          <Card sx={{ bgcolor: '#f3e5f5' }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                <Typography variant="subtitle2" color="textSecondary">🏦 全口座残高</Typography>
+                <AccountBalanceWallet color="secondary" />
+              </Box>
+              <Typography variant="h4" fontWeight="bold">¥{totalBalance.toLocaleString()}</Typography>
+              <Typography variant="caption">固定費(月): ¥{totalFixedCost.toLocaleString()}</Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* 2. 扶養リミット */}
       <Card sx={{ mb: 2 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{display:'flex', alignItems:'center'}}>
-            <AccountBalanceWallet sx={{mr:1}}/> 家計簿サマリー
+          <Typography variant="subtitle2" gutterBottom sx={{display:'flex', alignItems:'center'}}>
+            <Savings sx={{ mr: 1, color: 'orange' }} /> 扶養リミット状況
           </Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={6}>
-              <Paper elevation={0} sx={{ p: 1, bgcolor: '#e3f2fd', textAlign: 'center' }}>
-                <Typography variant="caption" color="textSecondary">現在の総資産</Typography>
-                <Typography variant="h6" color="primary">¥{totalAssets.toLocaleString()}</Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={6}>
-              <Paper elevation={0} sx={{ p: 1, bgcolor: '#ffebee', textAlign: 'center' }}>
-                <Typography variant="caption" color="textSecondary">毎月の固定費</Typography>
-                <Typography variant="h6" color="error">-¥{totalFixedCost.toLocaleString()}</Typography>
-              </Paper>
-            </Grid>
-          </Grid>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+            <Typography variant="body2">目標: ¥{targetLimit.toLocaleString()}</Typography>
+            <Typography variant="body2" fontWeight="bold" color={remainingToLimit < 100000 ? 'error' : 'primary'}>
+              あと: ¥{remainingToLimit.toLocaleString()}
+            </Typography>
+          </Box>
+          <LinearProgress variant="determinate" value={Math.min(100, (annualIncome / targetLimit) * 100)} sx={{ height: 10, borderRadius: 5, bgcolor: '#eee', '& .MuiLinearProgress-bar': { bgcolor: remainingToLimit < 100000 ? 'red' : '#00e676' } }} />
         </CardContent>
       </Card>
 
-      {/* 3. 年間スケジュール一覧 */}
-      <Card>
+      {/* 3. グラフエリア  */}
+      <Card sx={{ mb: 2 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{display:'flex', alignItems:'center'}}>
-            <CalendarMonth sx={{mr:1}}/> 年間出勤スケジュール
-          </Typography>
-          <TableContainer sx={{ maxHeight: 300 }}>
-            <Table stickyHeader size="small">
-              <TableHead>
+            <Typography variant="subtitle2" gutterBottom>📊 年間収入推移</Typography>
+            <div style={{ width: '100%', height: 300 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{top: 10, right: 10, left: -20, bottom: 0}}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="name" tick={{fontSize:10}} interval={0} />
+                        <YAxis tick={{fontSize:10}} tickFormatter={(val)=>`${val/10000}万`}/>
+                        <Tooltip formatter={(val)=>`¥${val.toLocaleString()}`} />
+                        <Bar dataKey="収入" fill="#1976d2" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
+        </CardContent>
+      </Card>
+
+      {/* 4. 詳細テーブル */}
+      <Card>
+        <CardContent sx={{ p: 0 }}>
+          <TableContainer component={Paper} elevation={0}>
+            <Table size="small">
+              <TableHead sx={{ bgcolor: '#f5f5f5' }}>
                 <TableRow>
                   <TableCell>月</TableCell>
-                  <TableCell align="center">出勤日数</TableCell>
-                  <TableCell align="right">予想給与</TableCell>
+                  <TableCell align="right">出勤</TableCell>
+                  <TableCell align="right">収入</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {summary.map((row) => (
                   <TableRow key={row.month}>
-                    <TableCell component="th" scope="row" sx={{fontWeight:'bold'}}>{row.month}</TableCell>
-                    <TableCell align="center">{row.days}日</TableCell>
-                    <TableCell align="right">¥{row.income.toLocaleString()}</TableCell>
+                    <TableCell component="th" scope="row">{row.month}</TableCell>
+                    <TableCell align="right">{row.days}日</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 'bold', color: row.income > 0 ? 'primary.main' : 'text.secondary' }}>
+                      ¥{row.income.toLocaleString()}
+                    </TableCell>
                   </TableRow>
                 ))}
-                {/* 合計行 */}
                 <TableRow sx={{ bgcolor: '#fafafa' }}>
-                  <TableCell component="th" scope="row" sx={{fontWeight:'bold'}}>合計</TableCell>
-                  <TableCell align="center" sx={{fontWeight:'bold'}}>{summary.reduce((s,r)=>s+r.days,0)}日</TableCell>
-                  <TableCell align="right" sx={{fontWeight:'bold'}}>¥{annualIncome.toLocaleString()}</TableCell>
+                    <TableCell fontWeight="bold">合計</TableCell>
+                    <TableCell align="right" fontWeight="bold">{summary.reduce((s,c)=>s+c.days,0)}日</TableCell>
+                    <TableCell align="right" fontWeight="bold">¥{annualIncome.toLocaleString()}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>

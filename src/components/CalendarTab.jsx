@@ -4,7 +4,7 @@ import { Grid, Typography, Box, Paper } from '@mui/material';
 import { WbSunny, Cloud, Umbrella, AcUnit } from '@mui/icons-material';
 import { format, startOfMonth, endOfMonth, isSameDay, eachDayOfInterval, getDay, isSunday, isSaturday } from 'date-fns'; // isSunday, isSaturday追加
 import JapaneseHolidays from 'japanese-holidays';
-import { useSwipeable } from 'react-swipeable'; // ★追加
+import { useSwipeable } from 'react-swipeable'; 
 
 const WeatherIcon = ({ code }) => {
   if (code === undefined) return null;
@@ -99,8 +99,10 @@ export default function CalendarTab({ currentDate, shifts, jobs, weatherData, on
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, px: 0.5, overflowY: 'hidden' }}>
                         {dayShifts.map((shift, idx) => {
                             const job = jobs.find(j => j.id === shift.jobId);
-                            const bgColor = shift.status === 'absence' ? '#e0e0e0' : (job?.color || '#999');
-                            const jobName = job ? job.name : '(不明)';
+                            // ★修正: 単発シフト対応
+                            const isCustom = shift.jobId === 'custom';
+                            const bgColor = shift.status === 'absence' ? '#e0e0e0' : (isCustom ? '#757575' : (job?.color || '#999'));
+                            const jobName = isCustom ? (shift.customName || '単発') : (job ? job.name : '(不明)');
                             
                             return (
                             <Box key={idx} 

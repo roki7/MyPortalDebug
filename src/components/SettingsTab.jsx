@@ -202,7 +202,10 @@ export default function SettingsTab({
             {['#1976d2', '#ed6c02', '#2e7d32', '#9c27b0', '#d32f2f'].map(c => (<Box key={c} onClick={() => setEditingJob({ ...editingJob, color: c })} sx={{ width: 30, height: 30, borderRadius: '50%', bgcolor: c, cursor: 'pointer', border: editingJob.color === c ? '2px solid black' : 'none' }} />))}
           </Box>
         </DialogContent>
-        <DialogActions><Button onClick={handleSaveJob} variant="contained">保存</Button></DialogActions>
+        <DialogActions>
+            <Button onClick={() => setOpenJobDialog(false)}>キャンセル</Button>
+            <Button onClick={handleSaveJob} variant="contained">保存</Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

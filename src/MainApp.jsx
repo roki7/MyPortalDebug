@@ -1,11 +1,29 @@
-// src/App.jsx (全書き換え推奨)
+// src/MainApp.jsx
 import React, { useState, useEffect } from 'react';
-import { Box, Container, Paper, Typography, Tabs, Tab, LinearProgress, Chip, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Avatar, Snackbar, Alert } from '@mui/material';
-import { CalendarMonth, AccountBalance, Settings, EmojiEvents, ArrowBack, ArrowForward, AccessTime, Delete, BeachAccess, Close, LocationOn, ShoppingCart, Assessment, Login, Logout, CloudDone, CloudOff } from '@mui/icons-material';
-import { format, addMonths, subMonths, parse } from 'date-fns'; // parse 追加
+import { 
+  Box, Container, Paper, Typography, Tabs, Tab, LinearProgress, Chip, IconButton, 
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Avatar, 
+  Snackbar, Alert, Drawer, List, ListItem, ListItemIcon, ListItemText, Divider 
+} from '@mui/material';
 
-import { INITIAL_JOBS, INITIAL_ACCOUNTS, INITIAL_RECURRING, INITIAL_SETTINGS, INITIAL_PAYMENT_TEMPLATES, INITIAL_MEMBERS, INITIAL_SHOPPING, INITIAL_MY_LINKS, LAT, LON } from './data';
-import { calculateMonthlyEarnings, calculateAnnualIncome, generateShiftsRange, deleteShiftsRange, getAnnualSummary, generateShiftsForYear } from './logic';
+import { 
+  CalendarMonth, AccountBalance, Settings, EmojiEvents, ArrowBack, ArrowForward, 
+  AccessTime, Delete, BeachAccess, Close, LocationOn, ShoppingCart, Assessment, 
+  Login, Logout, CloudDone, CloudOff, MoreHoriz 
+} from '@mui/icons-material';
+import { format, addMonths, subMonths, parse } from 'date-fns';
+
+import { 
+  INITIAL_JOBS, INITIAL_ACCOUNTS, INITIAL_RECURRING, INITIAL_SETTINGS, 
+  INITIAL_PAYMENT_TEMPLATES, INITIAL_MEMBERS, INITIAL_SHOPPING, INITIAL_MY_LINKS, 
+  LAT, LON 
+} from './data';
+
+import { 
+  calculateMonthlyEarnings, calculateAnnualIncome, generateShiftsRange, 
+  deleteShiftsRange, getAnnualSummary, generateShiftsForYear 
+} from './logic';
+
 import { saveData, loadData } from './storage';
 import { useAuth } from './AuthContext';
 
@@ -22,7 +40,9 @@ export default function MainApp() {
   const { currentUser, isPremium, login, logout } = useAuth();
   const [isLoaded, setIsLoaded] = useState(false);
   const [tabIndex, setTabIndex] = useState(0); 
-  
+  const [openDrawer, setOpenDrawer] = useState(false);
+
+  // データState
   const [settings, setSettings] = useState(INITIAL_SETTINGS);
   const [members, setMembers] = useState(INITIAL_MEMBERS);
   const [jobs, setJobs] = useState(INITIAL_JOBS);
@@ -34,6 +54,7 @@ export default function MainApp() {
   const [shopping, setShopping] = useState(INITIAL_SHOPPING);
   const [myLinks, setMyLinks] = useState(INITIAL_MY_LINKS || []); 
 
+  // UI State
   const [currentDate, setCurrentDate] = useState(new Date());
   const [earnings, setEarnings] = useState({ fixed: 0, projected: 0, workDays: 0 });
   const [annualIncome, setAnnualIncome] = useState(0);
@@ -43,12 +64,12 @@ export default function MainApp() {
   const [openMenu, setOpenMenu] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [editShift, setEditShift] = useState(null);
-
   const [ccNotification, setCCNotification] = useState(null); 
+
   const today = new Date();
   const todayDay = today.getDate();
 
-  // --- ロード・保存・計算ロジック (ここは変更なし) ---
+  // --- ロード・保存・計算ロジック ---
   useEffect(() => {
     const init = async () => {
       const savedData = await loadData(currentUser, isPremium);
@@ -106,7 +127,8 @@ export default function MainApp() {
       const checkCreditCardBilling = () => {
           const creditCards = accounts.filter(a => a.type === 'credit');
           creditCards.forEach(card => {
-              if (card.billingDay === todayDay) {
+              const checkDay = card.confirmationDay || card.billingDay;
+              if (checkDay === todayDay) {
                   const unsettledAmount = payments
                       .filter(p => p.accountId === card.id && !p.isSettled)
                       .reduce((sum, p) => sum + p.amount, 0);
@@ -121,15 +143,10 @@ export default function MainApp() {
 
   const totalFixedCost = recurring.reduce((sum, item) => sum + item.amount, 0);
 
-  // --- ハンドラー ---
+  // --- ハンドラー群 ---
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
-  // ★年月直接変更ハンドラー
-  const handleDateChange = (e) => {
-    if(e.target.value) {
-      setCurrentDate(parse(e.target.value, 'yyyy-MM', new Date()));
-    }
-  };
+  const handleDateChange = (e) => { if(e.target.value) setCurrentDate(parse(e.target.value, 'yyyy-MM', new Date())); };
 
   const handleAddJob = (job) => setJobs([...jobs, job]);
   const handleUpdateJob = (updatedJob) => setJobs(jobs.map(j => j.id === updatedJob.id ? updatedJob : j));
@@ -137,6 +154,7 @@ export default function MainApp() {
   const handleAddAccount = (acc) => setAccounts([...accounts, acc]);
   const handleAddMyLink = (link) => setMyLinks([...myLinks, link]);
   const handleDeleteMyLink = (id) => setMyLinks(myLinks.filter(a => a.id !== id));
+
   const handleGenerateAnnualShifts = (year) => {
     if (jobs.length === 0) { alert("仕事を登録してください"); return; }
     if (!window.confirm(`${year}年のシフトを一括生成しますか？`)) return;
@@ -149,6 +167,7 @@ export default function MainApp() {
     setShifts(mergedShifts);
     alert("完了！");
   };
+
   const handleGenerateRange = (start, end, jobId) => {
     const targetJob = jobs.find(j => j.id === parseInt(jobId));
     if (!targetJob) return;
@@ -161,36 +180,61 @@ export default function MainApp() {
     setShifts(mergedShifts);
     alert("一括登録完了！");
   };
+
   const handleDeleteRange = (start, end, jobId) => {
     if (!window.confirm("本当に削除していいですか？")) return;
     const cleanedShifts = deleteShiftsRange(shifts, start, end, parseInt(jobId));
     setShifts(cleanedShifts);
     alert("削除完了！");
   };
+
   const handleAddTemplate = (name) => setTemplates([...templates, { id: Date.now(), name, accountId: null }]);
   const handleDeleteTemplate = (id) => setTemplates(templates.filter(t => t.id !== id));
   const handleAddPayment = (payment) => setPayments([...payments, { ...payment, id: Date.now(), paid: false, month: format(currentDate, 'yyyy-MM'), day: new Date().getDate() }]);
-  const handleAddShift = (job) => {
+  
+  // ★修正: シフト追加ハンドラー (単発・手入力対応)
+  const handleAddShift = (job, manualAmount = 0) => {
     if (!selectedDate) return;
     const dateStr = format(selectedDate, 'yyyy-MM-dd');
-    let newShift = { id: Date.now(), jobId: job.id, status: 'normal', amount: 0, start: job.defaultStart || '09:00', end: job.defaultEnd || '17:00' };
-    if (job.type === 'manual') { const amt = prompt("金額", "0"); if(amt) newShift.amount = parseInt(amt); }
+    
+    let newShift = { 
+        id: Date.now(), 
+        jobId: job.id, 
+        status: 'normal', 
+        amount: manualAmount, 
+        start: job.defaultStart || '09:00', 
+        end: job.defaultEnd || '17:00' 
+    };
+
+    // 単発シフトの場合の特別処理
+    if (job.id === 'custom') {
+        newShift.customName = job.name;
+        newShift.start = ''; 
+        newShift.end = '';
+    } else if (job.type === 'manual' && !manualAmount) { 
+        const amt = prompt("金額", "0"); 
+        if(amt) newShift.amount = parseInt(amt); 
+    }
+    
     const current = shifts[dateStr] || [];
     setShifts({ ...shifts, [dateStr]: [...current, newShift] });
     setOpenMenu(false);
   };
+
   const handleSaveShiftTime = () => {
     if (!editShift || !selectedDate) return;
     const dateStr = format(selectedDate, 'yyyy-MM-dd');
     setShifts({ ...shifts, [dateStr]: shifts[dateStr].map(s => s.id === editShift.id ? editShift : s) });
     setEditShift(null);
   };
+
   const handleDeleteShift = () => {
     if (!editShift || !selectedDate) return;
     const dateStr = format(selectedDate, 'yyyy-MM-dd');
     setShifts({ ...shifts, [dateStr]: shifts[dateStr].filter(s => s.id !== editShift.id) });
     setEditShift(null);
   };
+
   const handleUpdateShiftStatus = (status) => {
     if (!editShift || !selectedDate) return;
     const dateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -199,6 +243,7 @@ export default function MainApp() {
     setShifts({ ...shifts, [dateStr]: shifts[dateStr].map(s => s.id === editShift.id ? updatedShift : s) });
     setEditShift(updatedShift);
   };
+
   const handleUpdateStock = (newStockList) => { setShopping({ ...shopping, stock: newStockList }); };
 
   const LoginStatus = () => {
@@ -208,38 +253,37 @@ export default function MainApp() {
     return (<Button onClick={login} size="small" variant="contained" color="secondary" startIcon={<Login />} sx={{ fontSize: 10, px: 1, minWidth: 0 }}>ログイン</Button>);
   };
 
+  const mainTabs = [
+    { icon: <CalendarMonth />, label: 'シフト' },
+    { icon: <AccountBalance />, label: '口座' },
+    { icon: <ShoppingCart />, label: '買い物' },
+  ];
+  const moreTabs = [
+    { icon: <Assessment />, label: '分析', index: 3 },
+    { icon: <EmojiEvents />, label: 'モチベ', index: 4 },
+    { icon: <Settings />, label: '設定', index: 5 },
+  ];
+
   return (
     <Container maxWidth="sm" sx={{ p: 0, bgcolor: '#f5f5f5', minHeight: '100vh', pb: 10, position: 'relative' }}>
-        
         <Snackbar open={!!ccNotification} autoHideDuration={9000} onClose={() => setCCNotification(null)} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}>
             <Alert onClose={() => setCCNotification(null)} severity="warning" sx={{ width: '100%' }} action={<Button color="inherit" size="small" onClick={() => setCCNotification(null)}>確認済</Button>}>
-                **{ccNotification?.cardName}** が本日締め日です！<br/>未確定額: **¥{ccNotification?.amount.toLocaleString()}** (引落日: {ccNotification?.paymentDay}日)
+                **{ccNotification?.cardName}** の請求確定日です！<br/>
+                現在のご利用額: **¥{ccNotification?.amount.toLocaleString()}**<br/>
+                (引落日: {ccNotification?.paymentDay}日)
             </Alert>
         </Snackbar>
 
-      {/* ヘッダー */}
       <Paper elevation={3} sx={{ p: 2, bgcolor: '#212121', color: 'white', borderRadius: '0 0 16px 16px', position:'sticky', top:0, zIndex:10 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
            <IconButton onClick={handlePrevMonth} size="small"><ArrowBack sx={{ color: 'white' }} /></IconButton>
-           
-           {/* ★修正: 年月ジャンプ用UI */}
            <Box sx={{textAlign:'center', position:'relative'}}>
              <Typography variant="h6" sx={{ fontWeight: 'bold', pointerEvents:'none' }}>{format(currentDate, 'yyyy年 M月')}</Typography>
              <Box sx={{display:'flex', alignItems:'center', justifyContent:'center', opacity:0.7, fontSize:12, pointerEvents:'none'}}>
                 <LocationOn sx={{fontSize:14, mr:0.5}}/>{settings.location?.name || '東京'}
              </Box>
-             {/* 透明な日付ピッカーを重ねる */}
-             <input 
-                type="month" 
-                value={format(currentDate, 'yyyy-MM')} 
-                onChange={handleDateChange}
-                style={{
-                    position:'absolute', top:0, left:0, width:'100%', height:'100%', 
-                    opacity:0, cursor:'pointer', zIndex:10
-                }}
-             />
+             <input type="month" value={format(currentDate, 'yyyy-MM')} onChange={handleDateChange} style={{ position:'absolute', top:0, left:0, width:'100%', height:'100%', opacity:0, cursor:'pointer', zIndex:10 }} />
            </Box>
-           
            <Box sx={{ display:'flex', alignItems:'center', gap: 1 }}>
              <Chip icon={currentUser && isPremium ? <CloudDone sx={{color:'white !important', fontSize:'16px !important'}}/> : <CloudOff sx={{color:'gray !important', fontSize:'16px !important'}}/>} label={settings.calcMode === 'realtime' ? '⏱' : '✅'} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', pl:0.5, height: 24 }} />
              <LoginStatus />
@@ -258,59 +302,75 @@ export default function MainApp() {
       </Paper>
 
       <Box sx={{ p: 2 }}>
-        {/* ★修正: スワイプ対応CalendarTabに、ジャンプ用関数も渡す */}
-        {tabIndex === 0 && <CalendarTab 
-            currentDate={currentDate} shifts={shifts} jobs={jobs} weatherData={weatherData} 
-            onDateClick={(d) => { setSelectedDate(d); setOpenMenu(true); }} 
-            onShiftClick={(s, d) => { setSelectedDate(d); setEditShift(s); }}
-            onPrevMonth={handlePrevMonth} 
-            onNextMonth={handleNextMonth}
-        />}
-        {tabIndex === 1 && <ReportTab annualIncome={annualIncome} summary={annualSummary} targetLimit={settings.targetLimit} accounts={accounts} totalFixedCost={totalFixedCost} />}
-        {tabIndex === 2 && <FinanceTab 
-            accounts={accounts} payments={payments} templates={templates} myLinks={myLinks} currentDate={currentDate} 
-            onAddAccount={handleAddAccount} onAddPayment={handleAddPayment} onAddTemplate={handleAddTemplate} onDeleteTemplate={handleDeleteTemplate} 
-            onAddMyLink={handleAddMyLink} onDeleteMyLink={handleDeleteMyLink} 
-            onUpdateBalance={(id, val) => setAccounts(accounts.map(a => a.id===id ? {...a, balance: parseInt(val)}:a))} 
-            onTogglePaid={(id) => setPayments(payments.map(p => p.id===id ? {...p, paid: !p.paid}:p))} 
-        />}
-        {tabIndex === 3 && <ShoppingTab shopping={shopping} onUpdateShopping={setShopping} onUpdateStock={handleUpdateStock} onAddPayment={handleAddPayment} accounts={accounts} />}
+        {tabIndex === 0 && <CalendarTab currentDate={currentDate} shifts={shifts} jobs={jobs} weatherData={weatherData} onDateClick={(d) => { setSelectedDate(d); setOpenMenu(true); }} onShiftClick={(s, d) => { setSelectedDate(d); setEditShift(s); }} onPrevMonth={handlePrevMonth} onNextMonth={handleNextMonth} />}
+        {tabIndex === 1 && <FinanceTab accounts={accounts} payments={payments} templates={templates} myLinks={myLinks} currentDate={currentDate} onAddAccount={handleAddAccount} onAddPayment={handleAddPayment} onAddTemplate={handleAddTemplate} onDeleteTemplate={handleDeleteTemplate} onAddMyLink={handleAddMyLink} onDeleteMyLink={handleDeleteMyLink} onUpdateBalance={(id, val) => setAccounts(accounts.map(a => a.id===id ? {...a, balance: parseInt(val)}:a))} onTogglePaid={(id) => setPayments(payments.map(p => p.id===id ? {...p, paid: !p.paid}:p))} />}
+        {tabIndex === 2 && <ShoppingTab shopping={shopping} onUpdateShopping={setShopping} onUpdateStock={handleUpdateStock} onAddPayment={handleAddPayment} accounts={accounts} />}
+        {tabIndex === 3 && <ReportTab annualIncome={annualIncome} summary={annualSummary} targetLimit={settings.targetLimit} accounts={accounts} totalFixedCost={totalFixedCost} />}
         {tabIndex === 4 && MotivationTab && <MotivationTab currentEarnings={earnings.fixed} fixedCost={totalFixedCost} />}
         {tabIndex === 5 && <SettingsTab jobs={jobs} settings={settings} members={members} onAddJob={handleAddJob} onUpdateJob={handleUpdateJob} onDeleteJob={handleDeleteJob} onUpdateSettings={setSettings} onGenerateAnnualShifts={handleGenerateAnnualShifts} onGenerateRange={handleGenerateRange} onDeleteRange={handleDeleteRange} onUpdateMembers={setMembers} />}
       </Box>
 
-      {/* ★修正: フッターのセーフエリア対応 (pb: 'env(safe-area-inset-bottom)') */}
       <Paper sx={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100, pb: 'env(safe-area-inset-bottom)' }} elevation={10}>
-        <Tabs value={tabIndex} onChange={(e, v) => setTabIndex(v)} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile>
-          <Tab icon={<CalendarMonth />} label="シフト" />
-          <Tab icon={<Assessment />} label="分析" />
-          <Tab icon={<AccountBalance />} label="口座" />
-          <Tab icon={<ShoppingCart />} label="買い物" />
-          <Tab icon={<EmojiEvents />} label="モチベ" />
-          <Tab icon={<Settings />} label="設定" />
+        <Tabs value={tabIndex < 3 ? tabIndex : false} onChange={(e, v) => v !== false && setTabIndex(v)} variant="fullWidth" centered>
+          {mainTabs.map((tab, i) => (
+            <Tab key={i} icon={tab.icon} label={tab.label} value={i} />
+          ))}
+          <Tab icon={<MoreHoriz />} label="その他" value={false} onClick={() => setOpenDrawer(true)} sx={{opacity: 0.7}} />
         </Tabs>
       </Paper>
 
+      <Drawer anchor="bottom" open={openDrawer} onClose={() => setOpenDrawer(false)} PaperProps={{ sx: { borderRadius: '16px 16px 0 0', pb: 'env(safe-area-inset-bottom)' } }}>
+        <Box sx={{ p: 2 }}>
+          <Typography variant="subtitle1" fontWeight="bold" align="center" sx={{mb:2}}>その他メニュー</Typography>
+          <List>
+            {moreTabs.map(tab => (
+              <React.Fragment key={tab.index}>
+                <ListItem button onClick={() => { setTabIndex(tab.index); setOpenDrawer(false); }}>
+                  <ListItemIcon>{tab.icon}</ListItemIcon>
+                  <ListItemText primary={tab.label} />
+                </ListItem>
+                <Divider />
+              </React.Fragment>
+            ))}
+          </List>
+        </Box>
+      </Drawer>
+
       <ShiftDrawer open={openMenu} onClose={() => setOpenMenu(false)} jobs={jobs} members={members} selectedDate={selectedDate} onAddShift={handleAddShift} />
 
-      <Dialog open={!!editShift} onClose={() => setEditShift(null)}>
+      {/* ★修正: 編集用ダイアログ */}
+      <Dialog open={!!editShift} onClose={() => setEditShift(null)} fullWidth maxWidth="xs">
         <DialogTitle>シフト操作</DialogTitle>
-        <DialogContent>
-            <Box sx={{ display: 'flex', gap: 2, mb: 2, mt: 1 }}>
-                <TextField label="開始" type="time" InputLabelProps={{shrink:true}} value={editShift?.start || ''} onChange={(e)=>setEditShift({...editShift, start: e.target.value})} />
-                <TextField label="終了" type="time" InputLabelProps={{shrink:true}} value={editShift?.end || ''} onChange={(e)=>setEditShift({...editShift, end: e.target.value})} />
-            </Box>
-            <TextField label="休憩 (分)" type="number" size="small" fullWidth sx={{mb:2}} value={editShift?.breakTime !== undefined ? editShift.breakTime : 60} onChange={(e)=>setEditShift({...editShift, breakTime: e.target.value})} />
+        <DialogContent sx={{pt: 2}}>
+            {/* 単発シフト以外なら時間表示 */}
+            {editShift?.jobId !== 'custom' && (
+                <>
+                    <Box sx={{ display: 'flex', gap: 2, mb: 3, mt: 1 }}>
+                        <TextField label="開始" type="time" InputLabelProps={{shrink:true}} fullWidth value={editShift?.start || ''} onChange={(e)=>setEditShift({...editShift, start: e.target.value})} />
+                        <TextField label="終了" type="time" InputLabelProps={{shrink:true}} fullWidth value={editShift?.end || ''} onChange={(e)=>setEditShift({...editShift, end: e.target.value})} />
+                    </Box>
+                    <TextField label="休憩 (分)" type="number" size="small" fullWidth sx={{mb:3}} value={editShift?.breakTime !== undefined ? editShift.breakTime : 60} onChange={(e)=>setEditShift({...editShift, breakTime: e.target.value})} />
+                </>
+            )}
+            
+            {/* 単発シフトなら金額変更 */}
+            {editShift?.jobId === 'custom' && (
+                <TextField label="金額" type="number" fullWidth sx={{mb:3, mt:1}} value={editShift?.amount} onChange={(e)=>setEditShift({...editShift, amount: parseInt(e.target.value)})} />
+            )}
+
             <Typography variant="caption" color="textSecondary" sx={{mb:1, display:'block'}}>※変更したら必ず「保存」を押してください</Typography>
+            
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
                 <Chip icon={<BeachAccess />} label="有給" onClick={() => handleUpdateShiftStatus('paid_leave')} color={editShift?.status === 'paid_leave' ? "primary" : "default"} variant={editShift?.status === 'paid_leave' ? "filled" : "outlined"} />
                 <Chip icon={<Close />} label="欠勤" onClick={() => handleUpdateShiftStatus('absence')} color={editShift?.status === 'absence' ? "error" : "default"} variant={editShift?.status === 'absence' ? "filled" : "outlined"} />
             </Box>
         </DialogContent>
-        <DialogActions>
-            <Button onClick={handleDeleteShift} color="error" startIcon={<Delete />}>削除</Button>
-            <Button onClick={handleSaveShiftTime} variant="contained">保存</Button>
-            <Button onClick={() => setEditShift(null)}>閉じる</Button>
+        <DialogActions sx={{ display: 'flex', justifyContent: 'space-between', px: 3, pb: 2 }}>
+            <Button onClick={handleDeleteShift} color="error">削除</Button>
+            <Box>
+                <Button onClick={() => setEditShift(null)} color="inherit" sx={{ mr: 2 }}>キャンセル</Button>
+                <Button onClick={handleSaveShiftTime} variant="contained" size="large">保存</Button>
+            </Box>
         </DialogActions>
       </Dialog>
       <ReloadPrompt />

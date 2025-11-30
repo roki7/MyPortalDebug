@@ -16,8 +16,7 @@ export default function FinanceTab({ accounts, payments, templates, myLinks, onA
   const [openLinkDialog, setOpenLinkDialog] = useState(false); // Link用
 
   // 口座追加用
-  const [newAcc, setNewAcc] = useState({ name: '', balance: '', linkUrl: '', type: 'bank', billingDay: 27, paymentDay: 12 }); 
-  
+  const [newAcc, setNewAcc] = useState({ name: '', balance: '', linkUrl: '', type: 'bank', billingDay: 27, paymentDay: 12, confirmationDay: 10 });
   // MyLinks追加用
   const [newLink, setNewLink] = useState({ name: '', url: '' });
 
@@ -35,6 +34,7 @@ export default function FinanceTab({ accounts, payments, templates, myLinks, onA
         type: newAcc.type, 
         billingDay: newAcc.type === 'credit' ? parseInt(newAcc.billingDay) : undefined, 
         paymentDay: newAcc.type === 'credit' ? parseInt(newAcc.paymentDay) : undefined,
+        confirmationDay: newAcc.type === 'credit' ? parseInt(newAcc.confirmationDay) : undefined,
       });
       setOpenAccDialog(false);
       setNewAcc({ name: '', balance: '', linkUrl: '', type: 'bank', billingDay: 27, paymentDay: 12 });
@@ -114,13 +114,13 @@ export default function FinanceTab({ accounts, payments, templates, myLinks, onA
       </Box>
 
       {/* 口座リスト */}
-      {accounts.map(acc => {
-          const accPayments = payments.filter(p => p.accountId === acc.id && p.month === currentMonthStr);
-          const totalPay = accPayments.filter(p => !p.paid).reduce((sum, p) => sum + p.amount, 0);
-          
+     {accounts.map(acc => {
           const isCredit = acc.type === 'credit';
+          const period = getTargetPeriod(currentDate, acc.billingDay, acc.type);
+          const accPayments = payments.filter(p => { if (p.accountId !== acc.id) return false; if (p.date) { return isWithinInterval(parseISO(p.date), period); } else { return p.month === format(currentDate, 'yyyy-MM'); } });
+          const totalPay = accPayments.filter(p => !p.paid).reduce((sum, p) => sum + p.amount, 0);
           const totalUnsettled = isCredit ? payments.filter(p => p.accountId === acc.id && !p.isSettled).reduce((sum, p) => sum + p.amount, 0) : 0;
-          
+          const periodText = isCredit ? `${format(period.start, 'M/d')}〜${format(period.end, 'M/d')}利用分` : '今月の予定';
           return (
               <Card key={acc.id} sx={{ mb: 2, borderLeft: (acc.type === 'bank' || acc.type === 'cash') && acc.balance < totalPay ? '5px solid red' : '5px solid green' }}>
                   <CardContent>
@@ -128,57 +128,32 @@ export default function FinanceTab({ accounts, payments, templates, myLinks, onA
                           <Box sx={{display:'flex', alignItems:'center'}}>
                             {getAccountIcon(acc.type)}
                             <Typography variant="h6" sx={{ml:1, mr:1}}>{acc.name}</Typography>
-                            {acc.linkUrl && (
-                                <IconButton size="small" color="primary" title="サイトを開く" onClick={() => window.open(acc.linkUrl, '_blank')}>
-                                    <OpenInNew fontSize="small" />
-                                </IconButton>
-                            )}
+                            {acc.linkUrl && ( <IconButton size="small" color="primary" onClick={() => window.open(acc.linkUrl, '_blank')}> <OpenInNew fontSize="small" /> </IconButton> )}
                           </Box>
-                          
-                          {isCredit ? (
-                              <Box sx={{textAlign:'right'}}>
-                                <Typography variant="caption" color="textSecondary">未確定利用額:</Typography>
-                                <Typography color={totalUnsettled > 0 ? 'error' : 'primary'} fontWeight="bold">¥{totalUnsettled.toLocaleString()}</Typography>
-                              </Box>
-                          ) : (
-                              <Typography color={acc.balance < totalPay ? 'error' : 'primary'} fontWeight="bold">残り: ¥{(acc.balance - totalPay).toLocaleString()}</Typography>
-                          )}
+                          {isCredit ? ( <Box sx={{textAlign:'right'}}> <Typography variant="caption" color="textSecondary">全期間の未確定:</Typography> <Typography color={totalUnsettled > 0 ? 'error' : 'primary'} fontWeight="bold">¥{totalUnsettled.toLocaleString()}</Typography> </Box> ) : ( <Typography color={acc.balance < totalPay ? 'error' : 'primary'} fontWeight="bold">残り: ¥{(acc.balance - totalPay).toLocaleString()}</Typography> )}
                       </Box>
-
-                      {acc.type !== 'credit' ? (
-                          <Box sx={{my: 1, p:1, bgcolor: '#f5f5f5', borderRadius: 1}}>
-                              <Typography variant="caption" color="textSecondary">現在残高</Typography>
-                              <TextField variant="standard" fullWidth value={acc.balance} type="number" onChange={(e) => onUpdateBalance(acc.id, e.target.value)} InputProps={{ startAdornment: <Typography sx={{mr:1}}>¥</Typography> }} />
-                          </Box>
-                      ) : (
-                           <Alert severity="info" sx={{my:1, p:1.5}}>
-                              **{acc.billingDay}日締めの{acc.paymentDay}日払い**です。
-                          </Alert>
+                      {/* カード情報表示の微調整 */}
+                      {acc.type !== 'credit' ? ( <Box sx={{my: 1, p:1, bgcolor: '#f5f5f5', borderRadius: 1}}> <Typography variant="caption" color="textSecondary">現在残高</Typography> <TextField variant="standard" fullWidth value={acc.balance} type="number" onChange={(e) => onUpdateBalance(acc.id, e.target.value)} InputProps={{ startAdornment: <Typography sx={{mr:1}}>¥</Typography> }} /> </Box> ) : ( 
+                          <Alert severity="info" sx={{my:1, p:1}}>
+                              {acc.billingDay}日締: <b>{periodText}</b> <br/>
+                              <span style={{fontSize:10}}>確定:{acc.confirmationDay || '未設定'}日 / 引落:{acc.paymentDay}日</span>
+                          </Alert> 
                       )}
-                      
                       <Divider sx={{my:1}} />
                       <List dense>
-                          {accPayments.map(pay => (
-                              <ListItem key={pay.id} disablePadding secondaryAction={<IconButton size="small" onClick={() => onTogglePaid(pay.id)}>{pay.paid ? <CheckCircle color="success" /> : <ErrorOutline color="action" />}</IconButton>}>
-                                  <ListItemText 
-                                      primary={pay.name} 
-                                      secondary={`¥${pay.amount.toLocaleString()}${isCredit && !pay.isSettled ? ' (未確定)' : ''}`} 
-                                      sx={{textDecoration: pay.paid ? 'line-through' : 'none'}} 
-                                  />
-                              </ListItem>
-                          ))}
-                          {accPayments.length === 0 && <Typography variant="caption" sx={{p:1}}>引落予定なし</Typography>}
+                          {accPayments.map(pay => ( <ListItem key={pay.id} disablePadding secondaryAction={<IconButton size="small" onClick={() => onTogglePaid(pay.id)}>{pay.paid ? <CheckCircle color="success" /> : <ErrorOutline color="action" />}</IconButton>}> <ListItemText primary={pay.name} secondary={`¥${pay.amount.toLocaleString()} (${format(parseISO(pay.date || new Date().toISOString()), 'M/d')})`} sx={{textDecoration: pay.paid ? 'line-through' : 'none'}} /> </ListItem> ))}
+                          {accPayments.length === 0 && <Typography variant="caption" sx={{p:1}}>利用なし</Typography>}
                       </List>
+                      {isCredit && accPayments.length > 0 && ( <Box sx={{textAlign:'right', mt:1}}> <Typography variant="caption">この期間の合計: </Typography> <Typography variant="body2" fontWeight="bold">¥{accPayments.reduce((sum,p)=>sum+p.amount,0).toLocaleString()}</Typography> </Box> )}
                   </CardContent>
               </Card>
           );
       })}
 
-      {/* 口座追加ダイアログ */}
-      <Dialog open={openAccDialog} onClose={() => {setOpenAccDialog(false); setNewAcc({ name: '', balance: '', linkUrl: '', type: 'bank', billingDay: 27, paymentDay: 12 });}}>
+      <Dialog open={openAccDialog} onClose={() => setOpenAccDialog(false)} fullWidth maxWidth="xs">
         <DialogTitle>新しい口座/カード</DialogTitle>
-        <DialogContent>
-            <FormControl fullWidth sx={{ mt: 1, mb: 2 }}>
+        <DialogContent sx={{pt: 2}}>
+            <FormControl fullWidth sx={{ mt: 2, mb: 3 }}>
                 <InputLabel>タイプ</InputLabel>
                 <Select value={newAcc.type} label="タイプ" onChange={(e) => setNewAcc({...newAcc, type:e.target.value, balance: e.target.value === 'credit' ? 0 : newAcc.balance})}>
                     <MenuItem value="bank">銀行口座</MenuItem>
@@ -186,25 +161,28 @@ export default function FinanceTab({ accounts, payments, templates, myLinks, onA
                     <MenuItem value="cash">現金 (手持ち)</MenuItem>
                 </Select>
             </FormControl>
-
-            <TextField label="名前" fullWidth sx={{ mb: 2 }} value={newAcc.name} onChange={(e) => setNewAcc({...newAcc, name:e.target.value})} />
+            <TextField label="名前" fullWidth sx={{ mb: 3 }} value={newAcc.name} onChange={(e) => setNewAcc({...newAcc, name:e.target.value})} />
             
             {newAcc.type !== 'credit' && (
-                <TextField label="現在の残高" type="number" fullWidth sx={{ mb: 2 }} value={newAcc.balance} onChange={(e) => setNewAcc({...newAcc, balance:e.target.value})} />
+                <TextField label="現在の残高" type="number" fullWidth sx={{ mb: 3 }} value={newAcc.balance} onChange={(e) => setNewAcc({...newAcc, balance:e.target.value})} />
             )}
 
             {newAcc.type === 'credit' && (
-                <Grid container spacing={2} sx={{mb:2}}>
-                    <Grid item xs={6}>
-                        <TextField label="締め日" type="number" fullWidth size="small" value={newAcc.billingDay} onChange={(e) => setNewAcc({...newAcc, billingDay: e.target.value})} />
+                <Grid container spacing={2} sx={{mb: 3}}>
+                    <Grid item xs={4}>
+                        <TextField label="締め日" type="number" fullWidth value={newAcc.billingDay} onChange={(e) => setNewAcc({...newAcc, billingDay: e.target.value})} />
                     </Grid>
-                    <Grid item xs={6}>
-                        <TextField label="引落日" type="number" fullWidth size="small" value={newAcc.paymentDay} onChange={(e) => setNewAcc({...newAcc, paymentDay: e.target.value})} />
+                    {/* ★追加: 請求確定日 */}
+                    <Grid item xs={4}>
+                        <TextField label="確定日" type="number" fullWidth value={newAcc.confirmationDay} onChange={(e) => setNewAcc({...newAcc, confirmationDay: e.target.value})} />
+                    </Grid>
+                    <Grid item xs={4}>
+                        <TextField label="引落日" type="number" fullWidth value={newAcc.paymentDay} onChange={(e) => setNewAcc({...newAcc, paymentDay: e.target.value})} />
                     </Grid>
                 </Grid>
             )}
-
-            <FormControl fullWidth>
+            {/* ★修正: 文字被り防止のために mt: 2 を追加 */}
+            <FormControl fullWidth sx={{mt: 2}}> 
                 <InputLabel>連携サイト (MyLinks)</InputLabel>
                 <Select value={newAcc.linkUrl} label="連携サイト (MyLinks)" onChange={(e) => setNewAcc({...newAcc, linkUrl:e.target.value})} displayEmpty>
                     <MenuItem value=""><em>連携なし</em></MenuItem>
@@ -212,25 +190,29 @@ export default function FinanceTab({ accounts, payments, templates, myLinks, onA
                 </Select>
             </FormControl>
         </DialogContent>
-        <DialogActions><Button onClick={handleSaveAccount} variant="contained" disabled={!newAcc.name}>登録</Button></DialogActions>
+        <DialogActions>
+            <Button onClick={() => setOpenAccDialog(false)}>キャンセル</Button>
+            <Button onClick={handleSaveAccount} variant="contained" disabled={!newAcc.name}>登録</Button>
+        </DialogActions>
       </Dialog>
 
-      {/* MyLinks追加ダイアログ */}
       <Dialog open={openLinkDialog} onClose={() => setOpenLinkDialog(false)}>
-        <DialogTitle>よく使うサイトを追加</DialogTitle>
-        <DialogContent>
-            <TextField label="サイト名" fullWidth sx={{ mt: 1, mb: 2 }} value={newLink.name} onChange={(e) => setNewLink({...newLink, name:e.target.value})} />
-            <TextField label="URL (https://...)" fullWidth value={newLink.url} onChange={(e) => setNewLink({...newLink, url:e.target.value})} />
+        <DialogTitle>サイトを追加</DialogTitle>
+        <DialogContent sx={{pt: 2}}>
+            <TextField label="サイト名" fullWidth sx={{ mt: 2, mb: 3 }} value={newLink.name} onChange={(e) => setNewLink({...newLink, name:e.target.value})} />
+            <TextField label="URL" fullWidth value={newLink.url} onChange={(e) => setNewLink({...newLink, url:e.target.value})} />
         </DialogContent>
-        <DialogActions><Button onClick={handleSaveMyLink} variant="contained">追加</Button></DialogActions>
+        <DialogActions>
+            <Button onClick={() => setOpenLinkDialog(false)}>キャンセル</Button>
+            <Button onClick={handleSaveMyLink} variant="contained">追加</Button>
+        </DialogActions>
       </Dialog>
 
-      {/* 支払い登録ダイアログ */}
       <Dialog open={openPayDialog} onClose={() => setOpenPayDialog(false)}>
         <DialogTitle>支払いを追加</DialogTitle>
-        <DialogContent>
-          <TextField label="項目名" fullWidth sx={{ mt: 1, mb: 2 }} value={newPay.name} onChange={(e) => setNewPay({...newPay, name:e.target.value})} />
-          <TextField label="金額" type="number" fullWidth autoFocus sx={{ mt: 1, mb: 2 }} value={newPay.amount} onChange={(e) => setNewPay({...newPay, amount:e.target.value})} />
+        <DialogContent sx={{pt: 2}}>
+          <TextField label="項目名" fullWidth sx={{ mt: 2, mb: 3 }} value={newPay.name} onChange={(e) => setNewPay({...newPay, name:e.target.value})} />
+          <TextField label="金額" type="number" fullWidth autoFocus sx={{ mb: 3 }} value={newPay.amount} onChange={(e) => setNewPay({...newPay, amount:e.target.value})} />
           <FormControl fullWidth>
             <InputLabel>口座</InputLabel>
             <Select value={newPay.accountId} label="口座" onChange={(e) => setNewPay({...newPay, accountId:e.target.value})}>
@@ -238,7 +220,10 @@ export default function FinanceTab({ accounts, payments, templates, myLinks, onA
             </Select>
           </FormControl>
         </DialogContent>
-        <DialogActions><Button onClick={handleSavePayment} variant="contained">登録</Button></DialogActions>
+        <DialogActions>
+            <Button onClick={() => setOpenPayDialog(false)}>キャンセル</Button>
+            <Button onClick={handleSavePayment} variant="contained">登録</Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );
