@@ -180,6 +180,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
     alert("記録しました！");
   };
 
+  // 在庫の新規登録（連続入力対応）
   const handleAddNewStock = () => {
     if (!newStockName) return;
     const newStockItem = { 
@@ -190,12 +191,10 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
     setNewStockName(''); 
     setNewStockYomi('');
     
-    // ★ここがポイント: 入力後、少し待ってから再度フォーカスを当てる
-    setTimeout(() => {
-        if(stockNameInputRef.current) {
-            stockNameInputRef.current.focus();
-        }
-    }, 100);
+    // フォーカスを維持
+    if(stockNameInputRef.current) {
+        stockNameInputRef.current.focus();
+    }
   };
 
 // ★在庫の更新（編集保存）
@@ -205,7 +204,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         item.id === editingStock.id ? { ...item, name: editingStock.name, yomi: editingStock.yomi } : item
     );
     onUpdateStock(updatedStock);
-    setEditingStock(null); // ダイアログ閉じる
+    setEditingStock(null);
   };
 
   const handleDeleteStock = () => {
@@ -214,6 +213,9 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         onUpdateStock(shoppingStock.filter(s => s.id !== editingStock.id));
         setEditingStock(null);
     }
+  };
+  const handleDeleteStockDirect = (id) => { // 直接削除用
+    if(window.confirm('削除しますか？')) onUpdateStock(shoppingStock.filter(s => s.id !== id));
   };
 
   const handleToggle = (id) => {
@@ -276,7 +278,6 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         <Tab label="履歴" />
       </Tabs>
 
-      {/* Tab 1: リスト */}
       {tabIndex === 0 && (
         <Card>
             <List dense>
@@ -298,7 +299,6 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         </Card>
       )}
 
-      {/* Tab 2: 定番在庫 */}
       {tabIndex === 1 && (
         <Box>
             <Paper sx={{ p: 2, mb: 2, bgcolor: isEditMode ? '#fff3e0' : 'white' }}>
@@ -316,7 +316,13 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
                             />
                             <TextField fullWidth size="small" label="よみ" value={newStockYomi} onChange={(e) => setNewStockYomi(e.target.value)} />
                         </Box>
-                        <Button variant="contained" fullWidth onClick={handleAddNewStock} startIcon={<Add/>}>リストに追加</Button>
+                        {/* ★修正: onMouseDownでフォーカス喪失を防ぐ */}
+                        <Button 
+                            variant="contained" fullWidth onClick={handleAddNewStock} startIcon={<Add/>}
+                            onMouseDown={(e) => e.preventDefault()}
+                        >
+                            リストに追加
+                        </Button>
                     </Stack>
                 ) : (
                     <TextField fullWidth size="small" placeholder="名前かひらがなで検索..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} InputProps={{ startAdornment: <InputAdornment position="start"><Search /></InputAdornment> }} sx={{ mb: 1 }} />
@@ -327,14 +333,12 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
                             <Grid item xs={6} sm={4} key={item.id}>
                                 <Button 
                                     variant="outlined" fullWidth size="small" color={isEditMode ? "secondary" : "primary"}
-                                    // ★編集モードならダイアログを開く、通常なら買い物リストに追加
                                     onClick={() => isEditMode ? setEditingStock(item) : handleAddStockToBuy(item.name)}
                                     sx={{ 
                                         justifyContent: 'flex-start', textTransform: 'none', fontSize: 12, px: 1, height: 40,
                                         display:'flex', alignItems:'center', gap: 1
                                     }}
                                 >
-                                    {/* アイコンを鉛筆に変更 */}
                                     {isEditMode && <Edit sx={{fontSize:16, flexShrink:0}}/>}
                                     <span style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flexGrow:1}}>
                                         {item.name}
@@ -355,7 +359,6 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         </Box>
       )}
 
-      {/* Tab 3: 履歴 */}
       {tabIndex === 2 && (
         <Box>
             {Object.keys(groupedHistory).sort().reverse().map(dateKey => (
@@ -380,7 +383,6 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         </Box>
       )}
 
-      {/* 追加ダイアログ */}
       <Dialog open={openAddDialog} onClose={() => setOpenAddDialog(false)}>
         <DialogTitle>買い物追加</DialogTitle>
         <DialogContent sx={{pt: 2}}>
@@ -394,31 +396,18 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         </DialogActions>
       </Dialog>
 
-      {/* ★追加: 定番品編集ダイアログ */}
       <Dialog open={!!editingStock} onClose={() => setEditingStock(null)}>
         <DialogTitle>定番品の編集</DialogTitle>
         <DialogContent sx={{pt: 2}}>
-            <TextField 
-                label="品名" fullWidth autoFocus sx={{ mt: 1, mb: 3 }} 
-                value={editingStock?.name || ''} 
-                onChange={(e) => setEditingStock({...editingStock, name: e.target.value})} 
-            />
-            <TextField 
-                label="よみ (検索用)" fullWidth sx={{ mb: 3 }} 
-                value={editingStock?.yomi || ''} 
-                onChange={(e) => setEditingStock({...editingStock, yomi: e.target.value})} 
-            />
+            <TextField label="品名" fullWidth autoFocus sx={{ mt: 1, mb: 3 }} value={editingStock?.name || ''} onChange={(e) => setEditingStock({...editingStock, name: e.target.value})} />
+            <TextField label="よみ (検索用)" fullWidth sx={{ mb: 3 }} value={editingStock?.yomi || ''} onChange={(e) => setEditingStock({...editingStock, yomi: e.target.value})} />
         </DialogContent>
         <DialogActions sx={{justifyContent: 'space-between'}}>
             <Button onClick={handleDeleteStock} color="error" startIcon={<Delete/>}>削除</Button>
-            <Box>
-                <Button onClick={() => setEditingStock(null)} sx={{mr:1}}>キャンセル</Button>
-                <Button onClick={handleUpdateStockItem} variant="contained">保存</Button>
-            </Box>
+            <Box><Button onClick={() => setEditingStock(null)} sx={{mr:1}}>キャンセル</Button><Button onClick={handleUpdateStockItem} variant="contained">保存</Button></Box>
         </DialogActions>
       </Dialog>
 
-      {/* 購入完了ダイアログ */}
       <Dialog open={openCompleteDialog} onClose={() => setOpenCompleteDialog(false)} maxWidth="xs" fullWidth>
         <DialogTitle>購入の記録</DialogTitle>
         <DialogContent sx={{pt: 2}}>
