@@ -1,5 +1,5 @@
 // src/components/ShoppingTab.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Box, Typography, Button, Card, CardContent, List, ListItem, ListItemIcon, ListItemText, Checkbox, 
   TextField, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, FormControl, InputLabel, 
@@ -22,11 +22,16 @@ const formatLastPurchased = (dateStr) => {
 export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock, onAddPayment, accounts }) {
   const [tabIndex, setTabIndex] = useState(0);
   
+  // 入力フォーカス制御用Ref ★追加
+  const stockNameInputRef = useRef(null);
+
   // リスト追加用
   const [newItemName, setNewItemName] = useState('');
   const [newItemYomi, setNewItemYomi] = useState('');
   const [openAddDialog, setOpenAddDialog] = useState(false);
   const [isStockItem, setIsStockItem] = useState(false); 
+
+  const [editingStock, setEditingStock] = useState(null); // 編集中のアイテムオブジェクト
   
   // 購入完了ダイアログ用
   const [openCompleteDialog, setOpenCompleteDialog] = useState(false);
@@ -182,16 +187,38 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
       icon: '📦', lastPurchased: null 
     };
     onUpdateStock([...shoppingStock, newStockItem]);
-    setNewStockName(''); setNewStockYomi('');
+    setNewStockName(''); 
+    setNewStockYomi('');
+    
+    // ★ここがポイント: 入力後、少し待ってから再度フォーカスを当てる
+    setTimeout(() => {
+        if(stockNameInputRef.current) {
+            stockNameInputRef.current.focus();
+        }
+    }, 100);
   };
 
-  const handleDeleteStock = (id) => {
-    if(window.confirm('削除しますか？')) onUpdateStock(shoppingStock.filter(s => s.id !== id));
+// ★在庫の更新（編集保存）
+  const handleUpdateStockItem = () => {
+    if (!editingStock || !editingStock.name) return;
+    const updatedStock = shoppingStock.map(item => 
+        item.id === editingStock.id ? { ...item, name: editingStock.name, yomi: editingStock.yomi } : item
+    );
+    onUpdateStock(updatedStock);
+    setEditingStock(null); // ダイアログ閉じる
+  };
+
+  const handleDeleteStock = () => {
+    if(!editingStock) return;
+    if(window.confirm(`「${editingStock.name}」を定番リストから削除しますか？`)) {
+        onUpdateStock(shoppingStock.filter(s => s.id !== editingStock.id));
+        setEditingStock(null);
+    }
   };
 
   const handleToggle = (id) => {
       const updated = shoppingList.map(item => item.id === id ? { ...item, checked: !item.checked } : item);
-      onUpdateShopping({ ...safeShopping, list: updated });
+      onUpdateShopping({ ...shopping, list: updated });
   };
 
   const handleVoiceInput = () => {
@@ -205,8 +232,10 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         setIsListening(false);
         const match = transcript.match(/(.*)\s*(\d+)円/);
         let name = transcript.trim();
-        if (match) { name = match[1].trim(); } 
+        let amt = '';
+        if (match) { name = match[1].trim(); amt = match[2]; } 
         setNewItemName(name);
+        setAmount(amt);
         setOpenAddDialog(true);
     };
     recognition.onend = () => setIsListening(false);
@@ -254,7 +283,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
                 {shoppingList.length === 0 && <Typography sx={{p:2, textAlign:'center', color:'gray'}}>リストは空です</Typography>}
                 {shoppingList.map(item => (
                     <ListItem key={item.id} 
-                        secondaryAction={<IconButton edge="end" onClick={() => onUpdateShopping({ ...safeShopping, list: shoppingList.filter(i => i.id !== item.id) })}><Delete /></IconButton>}
+                        secondaryAction={<IconButton edge="end" onClick={() => onUpdateShopping({ ...shopping, list: shoppingList.filter(i => i.id !== item.id) })}><Delete /></IconButton>}
                     >
                         <ListItemIcon><Checkbox edge="start" checked={item.checked} onChange={() => handleToggle(item.id)} /></ListItemIcon>
                         <ListItemText primary={item.name} sx={{ textDecoration: item.checked ? 'line-through' : 'none', color: item.checked ? 'gray' : 'black' }} />
@@ -280,7 +309,11 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
                 {isEditMode ? (
                     <Stack spacing={1} sx={{ mb: 2 }}>
                         <Box sx={{ display: 'flex', gap: 1 }}>
-                            <TextField fullWidth size="small" label="品名" value={newStockName} onChange={(e) => setNewStockName(e.target.value)} />
+                            <TextField 
+                                inputRef={stockNameInputRef}
+                                fullWidth size="small" label="品名" 
+                                value={newStockName} onChange={(e) => setNewStockName(e.target.value)} 
+                            />
                             <TextField fullWidth size="small" label="よみ" value={newStockYomi} onChange={(e) => setNewStockYomi(e.target.value)} />
                         </Box>
                         <Button variant="contained" fullWidth onClick={handleAddNewStock} startIcon={<Add/>}>リストに追加</Button>
@@ -288,22 +321,22 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
                 ) : (
                     <TextField fullWidth size="small" placeholder="名前かひらがなで検索..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} InputProps={{ startAdornment: <InputAdornment position="start"><Search /></InputAdornment> }} sx={{ mb: 1 }} />
                 )}
-                
                 <Box sx={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #eee', borderRadius: 1, p: 1 }}>
                     <Grid container spacing={1}>
                         {filteredStock.map(item => (
-                            <Grid item xs={6} sm={4} key={item.id}> {/* 横幅を少し広げる */}
+                            <Grid item xs={6} sm={4} key={item.id}>
                                 <Button 
-                                    variant="outlined" fullWidth size="small" color={isEditMode ? "error" : "primary"}
-                                    onClick={() => isEditMode ? handleDeleteStock(item.id) : handleAddStockToBuy(item.name)}
+                                    variant="outlined" fullWidth size="small" color={isEditMode ? "secondary" : "primary"}
+                                    // ★編集モードならダイアログを開く、通常なら買い物リストに追加
+                                    onClick={() => isEditMode ? setEditingStock(item) : handleAddStockToBuy(item.name)}
                                     sx={{ 
-                                        justifyContent: isEditMode ? 'center' : 'flex-start', 
-                                        textTransform: 'none', fontSize: 12, px: 1, height: 40,
-                                        display:'flex', alignItems:'center', gap:0.5
+                                        justifyContent: 'flex-start', textTransform: 'none', fontSize: 12, px: 1, height: 40,
+                                        display:'flex', alignItems:'center', gap: 1
                                     }}
                                 >
-                                    {isEditMode && <Delete sx={{fontSize:16}}/>}
-                                    <span style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flexGrow:1, textAlign: isEditMode?'center':'left'}}>
+                                    {/* アイコンを鉛筆に変更 */}
+                                    {isEditMode && <Edit sx={{fontSize:16, flexShrink:0}}/>}
+                                    <span style={{overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flexGrow:1}}>
                                         {item.name}
                                     </span>
                                 </Button>
@@ -313,18 +346,45 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
                 </Box>
             </Paper>
             <List dense sx={{bgcolor:'white', borderRadius:1}}>
-                {shoppingStock.map(item => ( <ListItem key={item.id} secondaryAction={<Chip label={formatLastPurchased(item.lastPurchased)} icon={<Event fontSize="small"/>} size="small" variant="outlined" />}> <ListItemText primary={item.name} secondary={item.lastPurchased ? '購入済' : '未購入'} /> </ListItem> ))}
+                {shoppingStock.map(item => (
+                    <ListItem key={item.id} secondaryAction={<Chip label={formatLastPurchased(item.lastPurchased)} icon={<Event fontSize="small"/>} size="small" variant="outlined" />}>
+                        <ListItemText primary={item.name} secondary={item.lastPurchased ? '購入済' : '未購入'} />
+                    </ListItem>
+                ))}
             </List>
         </Box>
       )}
 
-      {tabIndex === 2 && ( <Box> {Object.keys(groupedHistory).sort().reverse().map(dateKey => ( <Card key={dateKey} sx={{mb:1, bgcolor:'#fff'}}> <CardContent sx={{py:1}}> <Typography variant="subtitle2" fontWeight="bold" sx={{mb:1}}>{dateKey}</Typography> <List dense disablePadding> {groupedHistory[dateKey].map(log => { const account = accounts.find(a => a.id === log.accountId); return ( <ListItem key={log.id} disablePadding> <ListItemText primary={log.name} secondary={`¥${log.amount.toLocaleString()} (${account?.name || '不明'})`} /> <Typography variant="caption">{format(parseISO(log.date), 'HH:mm')}</Typography> </ListItem> ); })} </List> </CardContent> </Card> ))} {shoppingHistory.length === 0 && <Typography variant="caption" sx={{ p: 2 }}>履歴はありません</Typography>} </Box> )}
+      {/* Tab 3: 履歴 */}
+      {tabIndex === 2 && (
+        <Box>
+            {Object.keys(groupedHistory).sort().reverse().map(dateKey => (
+                <Card key={dateKey} sx={{mb:1, bgcolor:'#fff'}}>
+                    <CardContent sx={{py:1}}>
+                        <Typography variant="subtitle2" fontWeight="bold" sx={{mb:1}}>{dateKey}</Typography>
+                        <List dense disablePadding>
+                            {groupedHistory[dateKey].map(log => {
+                                const account = accounts.find(a => a.id === log.accountId);
+                                return (
+                                    <ListItem key={log.id} disablePadding>
+                                        <ListItemText primary={log.name} secondary={`¥${log.amount.toLocaleString()} (${account?.name || '不明'})`} />
+                                        <Typography variant="caption">{format(parseISO(log.date), 'HH:mm')}</Typography>
+                                    </ListItem>
+                                );
+                            })}
+                        </List>
+                    </CardContent>
+                </Card>
+            ))}
+            {shoppingHistory.length === 0 && <Typography variant="caption" sx={{ p: 2 }}>履歴はありません</Typography>}
+        </Box>
+      )}
 
-      {/* ダイアログ類 */}
+      {/* 追加ダイアログ */}
       <Dialog open={openAddDialog} onClose={() => setOpenAddDialog(false)}>
         <DialogTitle>買い物追加</DialogTitle>
-        <DialogContent sx={{pt:2}}>
-            <TextField label="項目名" fullWidth autoFocus sx={{ mb: 3 }} value={newItemName} onChange={(e) => setNewItemName(e.target.value)} />
+        <DialogContent sx={{pt: 2}}>
+            <TextField label="項目名" fullWidth autoFocus sx={{ mt: 1, mb: 3 }} value={newItemName} onChange={(e) => setNewItemName(e.target.value)} />
             {isStockItem && <TextField label="よみ (検索用)" fullWidth sx={{ mb: 3 }} value={newItemYomi} onChange={(e) => setNewItemYomi(e.target.value)} />}
             <FormControlLabel control={<Switch checked={isStockItem} onChange={(e)=>setIsStockItem(e.target.checked)} />} label="定番在庫として登録" />
         </DialogContent>
@@ -334,17 +394,42 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         </DialogActions>
       </Dialog>
 
+      {/* ★追加: 定番品編集ダイアログ */}
+      <Dialog open={!!editingStock} onClose={() => setEditingStock(null)}>
+        <DialogTitle>定番品の編集</DialogTitle>
+        <DialogContent sx={{pt: 2}}>
+            <TextField 
+                label="品名" fullWidth autoFocus sx={{ mt: 1, mb: 3 }} 
+                value={editingStock?.name || ''} 
+                onChange={(e) => setEditingStock({...editingStock, name: e.target.value})} 
+            />
+            <TextField 
+                label="よみ (検索用)" fullWidth sx={{ mb: 3 }} 
+                value={editingStock?.yomi || ''} 
+                onChange={(e) => setEditingStock({...editingStock, yomi: e.target.value})} 
+            />
+        </DialogContent>
+        <DialogActions sx={{justifyContent: 'space-between'}}>
+            <Button onClick={handleDeleteStock} color="error" startIcon={<Delete/>}>削除</Button>
+            <Box>
+                <Button onClick={() => setEditingStock(null)} sx={{mr:1}}>キャンセル</Button>
+                <Button onClick={handleUpdateStockItem} variant="contained">保存</Button>
+            </Box>
+        </DialogActions>
+      </Dialog>
+
+      {/* 購入完了ダイアログ */}
       <Dialog open={openCompleteDialog} onClose={() => setOpenCompleteDialog(false)} maxWidth="xs" fullWidth>
         <DialogTitle>購入の記録</DialogTitle>
-        <DialogContent sx={{pt:2}}>
+        <DialogContent sx={{pt: 2}}>
             <Box sx={{ mb: 2, textAlign: 'center' }}>
                 <ToggleButtonGroup value={purchaseMode} exclusive onChange={(e, newMode) => { if(newMode) setPurchaseMode(newMode); }} size="small" fullWidth>
                     <ToggleButton value="batch"><ReceiptLong sx={{mr:1}}/>まとめて</ToggleButton>
                     <ToggleButton value="individual"><ListAlt sx={{mr:1}}/>個別に</ToggleButton>
                 </ToggleButtonGroup>
             </Box>
-            {purchaseMode === 'batch' ? ( <Box> <Typography variant="caption" sx={{mb:1, display:'block'}}>合計金額を入力してください</Typography> <TextField label="合計金額" type="number" fullWidth autoFocus value={totalCost} onChange={(e) => setTotalCost(e.target.value)} InputProps={{ startAdornment: <Typography sx={{mr:1}}>¥</Typography> }} sx={{mb:2}} /> </Box> ) : ( <Box sx={{maxHeight: 250, overflowY: 'auto', mb:2}}> {selectedItems.map(item => ( <Box key={item.id} sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}> <Typography variant="body2" sx={{flex:1}}>{item.name}</Typography> <TextField placeholder="0" type="number" size="small" sx={{width: 100}} value={individualPrices[item.id]} onChange={(e) => setIndividualPrices({...individualPrices, [item.id]: e.target.value})} InputProps={{ endAdornment: <Typography variant="caption">円</Typography> }} /> </Box> ))} <Divider sx={{my:1}} /> <Box sx={{display:'flex', justifyContent:'space-between', fontWeight:'bold'}}><Typography>合計:</Typography><Typography>¥{totalCost || 0}</Typography></Box> </Box> )}
-            <FormControl fullWidth size="small">
+            {purchaseMode === 'batch' ? ( <Box> <Typography variant="caption" sx={{mb:1, display:'block'}}>合計金額を入力してください</Typography> <TextField label="合計金額" type="number" fullWidth autoFocus value={totalCost} onChange={(e) => setTotalCost(e.target.value)} InputProps={{ startAdornment: <Typography sx={{mr:1}}>¥</Typography> }} /> </Box> ) : ( <Box sx={{maxHeight: 250, overflowY: 'auto'}}> {selectedItems.map(item => ( <Box key={item.id} sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}> <Typography variant="body2" sx={{flex:1}}>{item.name}</Typography> <TextField placeholder="0" type="number" size="small" sx={{width: 100}} value={individualPrices[item.id]} onChange={(e) => setIndividualPrices({...individualPrices, [item.id]: e.target.value})} InputProps={{ endAdornment: <Typography variant="caption">円</Typography> }} /> </Box> ))} <Divider sx={{my:1}} /> <Box sx={{display:'flex', justifyContent:'space-between', fontWeight:'bold'}}><Typography>合計:</Typography><Typography>¥{totalCost || 0}</Typography></Box> </Box> )}
+            <FormControl fullWidth size="small" sx={{ mt: 3 }}>
                 <InputLabel>支払い方法</InputLabel>
                 <Select value={selectedAccount} label="支払い方法" onChange={(e) => setSelectedAccount(e.target.value)}>
                     <MenuItem disabled>--- カード ---</MenuItem> {creditCards.map(a => <MenuItem key={a.id} value={a.id}>{a.name}</MenuItem>)} <Divider /> <MenuItem disabled>--- 現金 ---</MenuItem> {cashAccounts.map(a => <MenuItem key={a.id} value={a.id}>{a.name}</MenuItem>)} <Divider /> <MenuItem disabled>--- 銀行 ---</MenuItem> {bankAccounts.map(a => <MenuItem key={a.id} value={a.id}>{a.name}</MenuItem>)}
