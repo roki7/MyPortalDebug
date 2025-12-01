@@ -8,7 +8,6 @@ import {
 import { AddShoppingCart, Delete, Search, Edit, Add, Save, CheckCircle, Event, Mic, ReceiptLong, ListAlt } from '@mui/icons-material';
 import { format, parseISO, isToday, isYesterday, differenceInDays } from 'date-fns';
 
-// 日付フォーマット
 const formatLastPurchased = (dateStr) => {
     if (!dateStr) return "未購入";
     const date = parseISO(dateStr);
@@ -21,8 +20,6 @@ const formatLastPurchased = (dateStr) => {
 
 export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock, onAddPayment, accounts }) {
   const [tabIndex, setTabIndex] = useState(0);
-  
-  // 入力フォーカス制御用Ref ★追加
   const stockNameInputRef = useRef(null);
 
   // リスト追加用
@@ -30,9 +27,10 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
   const [newItemYomi, setNewItemYomi] = useState('');
   const [openAddDialog, setOpenAddDialog] = useState(false);
   const [isStockItem, setIsStockItem] = useState(false); 
-
-  const [editingStock, setEditingStock] = useState(null); // 編集中のアイテムオブジェクト
   
+  // 定番品編集用
+  const [editingStock, setEditingStock] = useState(null); 
+
   // 購入完了ダイアログ用
   const [openCompleteDialog, setOpenCompleteDialog] = useState(false);
   const [purchaseMode, setPurchaseMode] = useState('batch'); 
@@ -51,29 +49,22 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
   const [isListening, setIsListening] = useState(false);
   const [voiceText, setVoiceText] = useState('');
 
-  // ★修正: 安全策（shopping自体がundefinedでも落ちないようにする）
-  const safeShopping = shopping || {}; 
-  const shoppingList = safeShopping.list || [];
-  const shoppingStock = safeShopping.stock || [];
-  const shoppingHistory = safeShopping.history || [];
+  const shoppingList = shopping?.list || [];
+  const shoppingStock = shopping?.stock || [];
+  const shoppingHistory = shopping?.history || [];
 
-  // アカウント分類
   const bankAccounts = (accounts || []).filter(a => a.type === 'bank');
   const cashAccounts = (accounts || []).filter(a => a.type === 'cash');
   const creditCards = (accounts || []).filter(a => a.type === 'credit');
 
   // --- ハンドラー ---
 
-  // 1. 買うものリストに追加
   const handleAddToList = (addToStock=false) => {
     if (!newItemName) return;
-    
     const newItem = { id: Date.now(), name: newItemName, checked: false };
-    
     if (addToStock) {
         onUpdateShopping({ 
-            ...safeShopping, 
-            list: [...shoppingList, { ...newItem, needed: true, quantity: 1 }],
+            ...shopping, 
             stock: [...shoppingStock, { 
                 id: 's' + Date.now(), 
                 name: newItemName, 
@@ -81,30 +72,26 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
                 icon: '📦', 
                 lastPurchased: null, 
                 remaining: 1 
-            }] 
+            }],
+            list: [...shoppingList, { ...newItem, needed: true, quantity: 1 }]
         });
     } else {
         if (!shoppingList.some(i => i.name === newItemName)) {
-            onUpdateShopping({ ...safeShopping, list: [...shoppingList, { ...newItem, needed: true, quantity: 1 }] });
+            onUpdateShopping({ ...shopping, list: [...shoppingList, { ...newItem, needed: true, quantity: 1 }] });
         }
     }
     setOpenAddDialog(false);
-    setNewItemName('');
-    setNewItemYomi('');
-    setSearchTerm('');
-    setIsStockItem(false);
+    setNewItemName(''); setNewItemYomi(''); setSearchTerm(''); setIsStockItem(false);
   };
 
   const handleAddStockToBuy = (name) => {
     setNewItemName(name);
-    // 直接追加ロジック
     if (!shoppingList.some(i => i.name === name)) {
-        onUpdateShopping({ ...safeShopping, list: [...shoppingList, { id: Date.now(), name: name, checked: false, needed: true, quantity: 1 }] });
+        onUpdateShopping({ ...shopping, list: [...shoppingList, { id: Date.now(), name: name, checked: false, needed: true, quantity: 1 }] });
     }
     setSearchTerm('');
   };
 
-  // 購入完了フロー
   const handleOpenCompleteDialog = () => {
     const items = shoppingList.filter(i => i.checked);
     setSelectedItems(items);
@@ -130,8 +117,8 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
     const account = accounts.find(a => a.id === selectedAccount);
     const purchaseDate = new Date().toISOString();
     const purchaseAmount = parseInt(totalCost);
-
     const itemNames = selectedItems.map(i => i.name).join('、');
+    
     onAddPayment({
         name: `買い物 (${itemNames.substring(0, 15)}${itemNames.length>15?'...':''})`, 
         amount: purchaseAmount, 
@@ -142,21 +129,9 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
 
     let newHistoryEntries = [];
     if (purchaseMode === 'batch') {
-        newHistoryEntries.push({
-            id: Date.now(),
-            name: `買い物 (${itemNames})`,
-            amount: purchaseAmount,
-            date: purchaseDate,
-            accountId: selectedAccount
-        });
+        newHistoryEntries.push({ id: Date.now(), name: `買い物 (${itemNames})`, amount: purchaseAmount, date: purchaseDate, accountId: selectedAccount });
     } else {
-        newHistoryEntries = selectedItems.map((item, idx) => ({
-            id: Date.now() + idx,
-            name: item.name,
-            amount: parseInt(individualPrices[item.id]) || 0,
-            date: purchaseDate,
-            accountId: selectedAccount
-        }));
+        newHistoryEntries = selectedItems.map((item, idx) => ({ id: Date.now() + idx, name: item.name, amount: parseInt(individualPrices[item.id]) || 0, date: purchaseDate, accountId: selectedAccount }));
     }
 
     let newStock = [...shoppingStock];
@@ -170,17 +145,12 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
     const boughtIds = selectedItems.map(i => i.id);
     const newList = shoppingList.filter(i => !boughtIds.includes(i.id));
 
-    onUpdateShopping({ 
-        list: newList, 
-        stock: newStock, 
-        history: [...newHistoryEntries, ...shoppingHistory] 
-    });
-
+    onUpdateShopping({ list: newList, stock: newStock, history: [...newHistoryEntries, ...shoppingHistory] });
     setOpenCompleteDialog(false);
     alert("記録しました！");
   };
 
-  // 在庫の新規登録（連続入力対応）
+  // 在庫の新規登録
   const handleAddNewStock = () => {
     if (!newStockName) return;
     const newStockItem = { 
@@ -191,13 +161,15 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
     setNewStockName(''); 
     setNewStockYomi('');
     
-    // フォーカスを維持
-    if(stockNameInputRef.current) {
-        stockNameInputRef.current.focus();
-    }
+    // フォーカス維持
+    setTimeout(() => {
+        if(stockNameInputRef.current) {
+            stockNameInputRef.current.focus();
+        }
+    }, 100);
   };
 
-// ★在庫の更新（編集保存）
+  // 在庫の更新
   const handleUpdateStockItem = () => {
     if (!editingStock || !editingStock.name) return;
     const updatedStock = shoppingStock.map(item => 
@@ -207,15 +179,13 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
     setEditingStock(null);
   };
 
+  // 在庫の削除
   const handleDeleteStock = () => {
     if(!editingStock) return;
     if(window.confirm(`「${editingStock.name}」を定番リストから削除しますか？`)) {
         onUpdateStock(shoppingStock.filter(s => s.id !== editingStock.id));
         setEditingStock(null);
     }
-  };
-  const handleDeleteStockDirect = (id) => { // 直接削除用
-    if(window.confirm('削除しますか？')) onUpdateStock(shoppingStock.filter(s => s.id !== id));
   };
 
   const handleToggle = (id) => {
@@ -278,6 +248,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         <Tab label="履歴" />
       </Tabs>
 
+      {/* Tab 1: リスト */}
       {tabIndex === 0 && (
         <Card>
             <List dense>
@@ -299,6 +270,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         </Card>
       )}
 
+      {/* Tab 2: 定番在庫 */}
       {tabIndex === 1 && (
         <Box>
             <Paper sx={{ p: 2, mb: 2, bgcolor: isEditMode ? '#fff3e0' : 'white' }}>
@@ -316,7 +288,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
                             />
                             <TextField fullWidth size="small" label="よみ" value={newStockYomi} onChange={(e) => setNewStockYomi(e.target.value)} />
                         </Box>
-                        {/* ★修正: onMouseDownでフォーカス喪失を防ぐ */}
+                        {/* onMouseDownでフォーカス維持 */}
                         <Button 
                             variant="contained" fullWidth onClick={handleAddNewStock} startIcon={<Add/>}
                             onMouseDown={(e) => e.preventDefault()}
@@ -359,6 +331,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         </Box>
       )}
 
+      {/* Tab 3: 履歴 */}
       {tabIndex === 2 && (
         <Box>
             {Object.keys(groupedHistory).sort().reverse().map(dateKey => (
@@ -383,6 +356,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         </Box>
       )}
 
+      {/* 追加ダイアログ */}
       <Dialog open={openAddDialog} onClose={() => setOpenAddDialog(false)}>
         <DialogTitle>買い物追加</DialogTitle>
         <DialogContent sx={{pt: 2}}>
@@ -396,6 +370,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         </DialogActions>
       </Dialog>
 
+      {/* 編集ダイアログ */}
       <Dialog open={!!editingStock} onClose={() => setEditingStock(null)}>
         <DialogTitle>定番品の編集</DialogTitle>
         <DialogContent sx={{pt: 2}}>
@@ -408,6 +383,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         </DialogActions>
       </Dialog>
 
+      {/* 購入完了ダイアログ */}
       <Dialog open={openCompleteDialog} onClose={() => setOpenCompleteDialog(false)} maxWidth="xs" fullWidth>
         <DialogTitle>購入の記録</DialogTitle>
         <DialogContent sx={{pt: 2}}>
