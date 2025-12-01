@@ -5,7 +5,7 @@ import {
   ListItemSecondaryAction, IconButton, Button, TextField, 
   Dialog, DialogTitle, DialogContent, DialogActions, 
   FormControl, InputLabel, Select, MenuItem, Divider, 
-  FormControlLabel, Switch, Chip, Grid
+  FormControlLabel, Switch, Chip, Grid, ListItemIcon // ★ここに追加しました！
 } from '@mui/material';
 import { Delete, Add, Work, CalendarMonth, Edit, Person, RestoreFromTrash } from '@mui/icons-material';
 import { PREFECTURES } from '../data';
@@ -137,7 +137,7 @@ export default function SettingsTab({
         </CardContent>
       </Card>
 
-      {/* 3. 仕事リスト (★UI修正) */}
+      {/* 3. 仕事リスト (★修正済み) */}
       <Card sx={{ mb: 2 }}>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
@@ -158,7 +158,6 @@ export default function SettingsTab({
                   <ListItemIcon>
                     <Work sx={{ color: job.color }} />
                   </ListItemIcon>
-                  {/* ★修正: 名前とバッジをFlexboxで並べる */}
                   <ListItemText 
                     disableTypography
                     primary={
