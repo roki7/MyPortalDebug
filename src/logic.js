@@ -2,7 +2,7 @@
 import { set, differenceInMinutes, isSameDay, isBefore, endOfMonth, getDaysInMonth, startOfMonth, format, getDay, eachDayOfInterval, startOfYear, endOfYear, isWithinInterval, startOfDay, isAfter, subMonths, addDays } from 'date-fns';
 import JapaneseHolidays from 'japanese-holidays';
 
-// 締め日判定ヘルパー
+// ヘルパー: 締め日判定
 const isShiftInTargetMonth = (shiftDate, targetDate, cutoffDay) => {
   if (!cutoffDay || cutoffDay >= 31) {
     return shiftDate.getMonth() === targetDate.getMonth() && shiftDate.getFullYear() === targetDate.getFullYear();
@@ -14,6 +14,7 @@ const isShiftInTargetMonth = (shiftDate, targetDate, cutoffDay) => {
   return isWithinInterval(shiftDate, { start: startDate, end: endDate });
 };
 
+// 1. シフト1件の給与計算
 export const calculateShiftWage = (shift, job) => {
   if (!job) {
      if (shift.jobId === 'custom') return shift.amount || 0;
@@ -24,6 +25,7 @@ export const calculateShiftWage = (shift, job) => {
   if (job.type === 'hourly') {
     const start = set(new Date(), { hours: parseInt(shift.start.split(':')[0]), minutes: parseInt(shift.start.split(':')[1]) });
     const end = set(new Date(), { hours: parseInt(shift.end.split(':')[0]), minutes: parseInt(shift.end.split(':')[1]) });
+    
     let minutes = differenceInMinutes(end, start);
 
     let breakTime = 0;
@@ -44,11 +46,17 @@ export const calculateShiftWage = (shift, job) => {
   return 0;
 };
 
+// 2. 月の給与合計 (★修正: 日数カウントを自分のみ＆重複なしに)
 export const calculateMonthlyEarnings = (shifts, jobs, currentDate, calcMode) => {
-  let fixed = 0, projected = 0, workDays = 0;
+  let fixed = 0, projected = 0;
+  
+  // ★修正: 重複しない日付を管理するセット
+  const myWorkDaysSet = new Set();
+  
   const now = new Date();
   const todayStart = startOfDay(now);
 
+  // 月給
   jobs.forEach(job => {
     if (job.type === 'monthly') {
       const monthlyWage = parseInt(job.value);
@@ -67,23 +75,31 @@ export const calculateMonthlyEarnings = (shifts, jobs, currentDate, calcMode) =>
     }
   });
 
+  // シフト
   Object.entries(shifts).forEach(([dateStr, dayShifts]) => {
     const shiftDate = new Date(dateStr);
     dayShifts.forEach(shift => {
       let job = jobs.find(j => j.id === shift.jobId);
-      if (!job && shift.jobId === 'custom') job = { type: 'manual', cutoffDay: 31 };
+      if (!job && shift.jobId === 'custom') job = { type: 'manual', cutoffDay: 31, memberId: 'me' }; // 単発は自分扱い
       if (!job) return;
 
-      // ★ここが重要：締め日を考慮して集計
+      // 締め日チェック
       if (!isShiftInTargetMonth(shiftDate, currentDate, job.cutoffDay)) return;
 
-      if (shift.status !== 'absence') workDays++;
+      // ★修正: 出勤日数のカウント条件
+      // 1. 欠勤ではない
+      // 2. 自分の仕事である (memberId === 'me')
+      // 3. まだカウントしていない日付である (Setで管理)
+      if (shift.status !== 'absence' && job.memberId === 'me') {
+          myWorkDaysSet.add(dateStr);
+      }
 
       const fullWage = calculateShiftWage(shift, job);
       projected += fullWage; 
 
       if (shift.status === 'absence') return;
       if (shift.status === 'paid_leave') { fixed += fullWage; return; }
+      
       if (isBefore(shiftDate, todayStart)) { fixed += fullWage; return; }
 
       if (isSameDay(shiftDate, now)) {
@@ -112,9 +128,12 @@ export const calculateMonthlyEarnings = (shifts, jobs, currentDate, calcMode) =>
       }
     });
   });
-  return { fixed: Math.floor(fixed), projected: Math.floor(projected), workDays };
+
+  // Setのサイズを日数とする
+  return { fixed: Math.floor(fixed), projected: Math.floor(projected), workDays: myWorkDaysSet.size };
 };
 
+// 3. 年収計算
 export const calculateAnnualIncome = (shifts, jobs, currentYearDate) => {
   let total = 0;
   const start = startOfYear(currentYearDate);
@@ -133,33 +152,55 @@ export const calculateAnnualIncome = (shifts, jobs, currentYearDate) => {
   return total;
 };
 
+// 4. 年間サマリー (★修正: 日数カウントを自分のみ＆重複なしに)
 export const getAnnualSummary = (shifts, jobs, currentYearDate, calcMode) => {
   const start = startOfYear(currentYearDate);
   const summary = [];
+  
+  // 月ごとのデータを初期化（Setを追加）
   for (let i = 0; i < 12; i++) {
     const d = new Date(start.getFullYear(), i, 1);
-    summary.push({ month: format(d, 'M月'), dateObj: d, income: 0, days: 0 });
+    summary.push({ 
+        month: format(d, 'M月'), 
+        dateObj: d, 
+        income: 0, 
+        days: 0, 
+        workedDates: new Set() // 日付重複防止用
+    });
   }
+
   jobs.forEach(job => { if (job.type === 'monthly') summary.forEach(m => m.income += parseInt(job.value)); });
   
   Object.entries(shifts).forEach(([dateStr, dayShifts]) => {
     const shiftDate = new Date(dateStr);
     dayShifts.forEach(shift => {
         let job = jobs.find(j => j.id === shift.jobId);
-        if (!job && shift.jobId === 'custom') job = { type: 'manual', cutoffDay: 31 };
+        if (!job && shift.jobId === 'custom') job = { type: 'manual', cutoffDay: 31, memberId: 'me' };
         if (!job) return;
         
         summary.forEach((monthData) => {
             if (isShiftInTargetMonth(shiftDate, monthData.dateObj, job.cutoffDay)) {
                 monthData.income += calculateShiftWage(shift, job);
-                if (shift.status !== 'absence') monthData.days += 1;
+                
+                // 自分(me)の出勤日だけSetに追加
+                if (shift.status !== 'absence' && job.memberId === 'me') {
+                    monthData.workedDates.add(dateStr);
+                }
             }
         });
     });
   });
+
+  // 最後にSetのサイズをdaysに入れる
+  summary.forEach(m => {
+      m.days = m.workedDates.size;
+      delete m.workedDates; // 掃除
+  });
+
   return summary;
 };
 
+// 5. 期間生成
 export const generateShiftsRange = (startDate, endDate, targetJob, skipHolidays) => {
   const start = new Date(startDate); const end = new Date(endDate); const newShifts = {}; const days = eachDayOfInterval({ start, end });
   days.forEach(d => {
@@ -172,12 +213,14 @@ export const generateShiftsRange = (startDate, endDate, targetJob, skipHolidays)
   }); return newShifts;
 };
 
+// 6. 期間削除
 export const deleteShiftsRange = (currentShifts, startDate, endDate, targetJobId) => {
   const start = new Date(startDate); const end = new Date(endDate); const updatedShifts = { ...currentShifts }; const days = eachDayOfInterval({ start, end });
   days.forEach(d => { const dateStr = format(d, 'yyyy-MM-dd'); if (updatedShifts[dateStr]) { updatedShifts[dateStr] = updatedShifts[dateStr].filter(s => s.jobId !== targetJobId); if (updatedShifts[dateStr].length === 0) delete updatedShifts[dateStr]; } });
   return updatedShifts;
 };
 
+// 7. 年間生成
 export const generateShiftsForYear = (targetYear, jobs) => {
   const start = new Date(targetYear, 0, 1); const end = new Date(targetYear, 11, 31); const newShifts = {}; const days = eachDayOfInterval({ start, end });
   days.forEach(d => {
