@@ -59,9 +59,11 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
 
   // --- ハンドラー ---
 
+  // リストに追加
   const handleAddToList = (addToStock=false) => {
     if (!newItemName) return;
     const newItem = { id: Date.now(), name: newItemName, checked: false };
+    
     if (addToStock) {
         onUpdateShopping({ 
             ...shopping, 
@@ -81,9 +83,13 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         }
     }
     setOpenAddDialog(false);
-    setNewItemName(''); setNewItemYomi(''); setSearchTerm(''); setIsStockItem(false);
+    setNewItemName(''); 
+    setNewItemYomi(''); 
+    setSearchTerm(''); 
+    setIsStockItem(false);
   };
 
+  // 定番在庫からリストへ追加
   const handleAddStockToBuy = (name) => {
     setNewItemName(name);
     if (!shoppingList.some(i => i.name === name)) {
@@ -92,6 +98,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
     setSearchTerm('');
   };
 
+  // 購入完了ダイアログを開く
   const handleOpenCompleteDialog = () => {
     const items = shoppingList.filter(i => i.checked);
     setSelectedItems(items);
@@ -105,6 +112,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
     setOpenCompleteDialog(true);
   };
 
+  // 合計金額の自動計算
   useEffect(() => {
     if (purchaseMode === 'individual') {
         const sum = Object.values(individualPrices).reduce((a, b) => a + (parseInt(b) || 0), 0);
@@ -112,6 +120,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
     }
   }, [individualPrices, purchaseMode]);
 
+  // 購入実行
   const handleExecutePurchase = () => {
     if (!totalCost || !selectedAccount) return;
     const account = accounts.find(a => a.id === selectedAccount);
@@ -119,6 +128,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
     const purchaseAmount = parseInt(totalCost);
     const itemNames = selectedItems.map(i => i.name).join('、');
     
+    // 家計簿へ
     onAddPayment({
         name: `買い物 (${itemNames.substring(0, 15)}${itemNames.length>15?'...':''})`, 
         amount: purchaseAmount, 
@@ -127,6 +137,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         isSettled: account?.type !== 'credit' 
     });
 
+    // 履歴へ
     let newHistoryEntries = [];
     if (purchaseMode === 'batch') {
         newHistoryEntries.push({ id: Date.now(), name: `買い物 (${itemNames})`, amount: purchaseAmount, date: purchaseDate, accountId: selectedAccount });
@@ -134,6 +145,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         newHistoryEntries = selectedItems.map((item, idx) => ({ id: Date.now() + idx, name: item.name, amount: parseInt(individualPrices[item.id]) || 0, date: purchaseDate, accountId: selectedAccount }));
     }
 
+    // 在庫の最終購入日更新
     let newStock = [...shoppingStock];
     selectedItems.forEach(item => {
         const stockIndex = newStock.findIndex(s => s.name === item.name);
@@ -142,6 +154,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         }
     });
 
+    // リストから削除
     const boughtIds = selectedItems.map(i => i.id);
     const newList = shoppingList.filter(i => !boughtIds.includes(i.id));
 
@@ -150,7 +163,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
     alert("記録しました！");
   };
 
-  // 在庫の新規登録
+  // 定番在庫の新規登録 (キーボード維持)
   const handleAddNewStock = () => {
     if (!newStockName) return;
     const newStockItem = { 
@@ -161,7 +174,6 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
     setNewStockName(''); 
     setNewStockYomi('');
     
-    // フォーカス維持
     setTimeout(() => {
         if(stockNameInputRef.current) {
             stockNameInputRef.current.focus();
@@ -169,7 +181,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
     }, 100);
   };
 
-  // 在庫の更新
+  // 定番在庫の編集保存
   const handleUpdateStockItem = () => {
     if (!editingStock || !editingStock.name) return;
     const updatedStock = shoppingStock.map(item => 
@@ -179,7 +191,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
     setEditingStock(null);
   };
 
-  // 在庫の削除
+  // 定番在庫の削除
   const handleDeleteStock = () => {
     if(!editingStock) return;
     if(window.confirm(`「${editingStock.name}」を定番リストから削除しますか？`)) {
@@ -193,6 +205,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
       onUpdateShopping({ ...shopping, list: updated });
   };
 
+  // 音声入力
   const handleVoiceInput = () => {
     if (!('webkitSpeechRecognition' in window)) { alert("Chromeで試してください"); return; }
     const recognition = new window.webkitSpeechRecognition();
@@ -288,7 +301,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
                             />
                             <TextField fullWidth size="small" label="よみ" value={newStockYomi} onChange={(e) => setNewStockYomi(e.target.value)} />
                         </Box>
-                        {/* onMouseDownでフォーカス維持 */}
+                        {/* キーボード閉じない対策 */}
                         <Button 
                             variant="contained" fullWidth onClick={handleAddNewStock} startIcon={<Add/>}
                             onMouseDown={(e) => e.preventDefault()}
@@ -299,6 +312,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
                 ) : (
                     <TextField fullWidth size="small" placeholder="名前かひらがなで検索..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} InputProps={{ startAdornment: <InputAdornment position="start"><Search /></InputAdornment> }} sx={{ mb: 1 }} />
                 )}
+                
                 <Box sx={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #eee', borderRadius: 1, p: 1 }}>
                     <Grid container spacing={1}>
                         {filteredStock.map(item => (
@@ -307,8 +321,10 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
                                     variant="outlined" fullWidth size="small" color={isEditMode ? "secondary" : "primary"}
                                     onClick={() => isEditMode ? setEditingStock(item) : handleAddStockToBuy(item.name)}
                                     sx={{ 
-                                        justifyContent: 'flex-start', textTransform: 'none', fontSize: 12, px: 1, height: 40,
-                                        display:'flex', alignItems:'center', gap: 1
+                                        justifyContent: isEditMode ? 'flex-start' : 'flex-start', 
+                                        textTransform: 'none', fontSize: 12, px: 1, height: 40,
+                                        display:'flex', alignItems:'center', gap: 1,
+                                        overflow: 'hidden'
                                     }}
                                 >
                                     {isEditMode && <Edit sx={{fontSize:16, flexShrink:0}}/>}
@@ -356,7 +372,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         </Box>
       )}
 
-      {/* 追加ダイアログ */}
+      {/* ダイアログ類 */}
       <Dialog open={openAddDialog} onClose={() => setOpenAddDialog(false)}>
         <DialogTitle>買い物追加</DialogTitle>
         <DialogContent sx={{pt: 2}}>
@@ -370,7 +386,7 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
         </DialogActions>
       </Dialog>
 
-      {/* 編集ダイアログ */}
+      {/* 定番品編集ダイアログ */}
       <Dialog open={!!editingStock} onClose={() => setEditingStock(null)}>
         <DialogTitle>定番品の編集</DialogTitle>
         <DialogContent sx={{pt: 2}}>
@@ -393,7 +409,23 @@ export default function ShoppingTab({ shopping, onUpdateShopping, onUpdateStock,
                     <ToggleButton value="individual"><ListAlt sx={{mr:1}}/>個別に</ToggleButton>
                 </ToggleButtonGroup>
             </Box>
-            {purchaseMode === 'batch' ? ( <Box> <Typography variant="caption" sx={{mb:1, display:'block'}}>合計金額を入力してください</Typography> <TextField label="合計金額" type="number" fullWidth autoFocus value={totalCost} onChange={(e) => setTotalCost(e.target.value)} InputProps={{ startAdornment: <Typography sx={{mr:1}}>¥</Typography> }} /> </Box> ) : ( <Box sx={{maxHeight: 250, overflowY: 'auto'}}> {selectedItems.map(item => ( <Box key={item.id} sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}> <Typography variant="body2" sx={{flex:1}}>{item.name}</Typography> <TextField placeholder="0" type="number" size="small" sx={{width: 100}} value={individualPrices[item.id]} onChange={(e) => setIndividualPrices({...individualPrices, [item.id]: e.target.value})} InputProps={{ endAdornment: <Typography variant="caption">円</Typography> }} /> </Box> ))} <Divider sx={{my:1}} /> <Box sx={{display:'flex', justifyContent:'space-between', fontWeight:'bold'}}><Typography>合計:</Typography><Typography>¥{totalCost || 0}</Typography></Box> </Box> )}
+            {purchaseMode === 'batch' ? ( 
+                <Box> 
+                    <Typography variant="caption" sx={{mb:1, display:'block'}}>合計金額を入力してください</Typography> 
+                    <TextField label="合計金額" type="number" fullWidth autoFocus value={totalCost} onChange={(e) => setTotalCost(e.target.value)} InputProps={{ startAdornment: <Typography sx={{mr:1}}>¥</Typography> }} /> 
+                </Box> 
+            ) : ( 
+                <Box sx={{maxHeight: 250, overflowY: 'auto'}}> 
+                    {selectedItems.map(item => ( 
+                        <Box key={item.id} sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}> 
+                            <Typography variant="body2" sx={{flex:1}}>{item.name}</Typography> 
+                            <TextField placeholder="0" type="number" size="small" sx={{width: 100}} value={individualPrices[item.id]} onChange={(e) => setIndividualPrices({...individualPrices, [item.id]: e.target.value})} InputProps={{ endAdornment: <Typography variant="caption">円</Typography> }} /> 
+                        </Box> 
+                    ))} 
+                    <Divider sx={{my:1}} /> 
+                    <Box sx={{display:'flex', justifyContent:'space-between', fontWeight:'bold'}}><Typography>合計:</Typography><Typography>¥{totalCost || 0}</Typography></Box> 
+                </Box> 
+            )}
             <FormControl fullWidth size="small" sx={{ mt: 3 }}>
                 <InputLabel>支払い方法</InputLabel>
                 <Select value={selectedAccount} label="支払い方法" onChange={(e) => setSelectedAccount(e.target.value)}>
