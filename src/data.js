@@ -1,16 +1,13 @@
 // src/data.js
 
-// デフォルトの東京の座標
 export const LAT = 35.6895;
 export const LON = 139.6917;
 
-// 初期メンバー
 export const INITIAL_MEMBERS = [
   { id: 'me', name: '自分', color: '#1976d2' },
   { id: 'partner', name: 'パートナー', color: '#ed6c02' }
 ];
 
-// 設定の初期値
 export const INITIAL_SETTINGS = {
   targetLimit: 1030000,
   calcMode: 'realtime',
@@ -21,21 +18,28 @@ export const INITIAL_JOBS = [];
 export const INITIAL_ACCOUNTS = [];
 export const INITIAL_RECURRING = [];
 
-// ★変更: MyLinks (よく使うリンク集)
-export const INITIAL_MY_LINKS = [
-  // デフォルトは空にしておくか、汎用的なものだけにする
-  { id: 'link_1', name: 'Amazon', url: 'https://www.amazon.co.jp/', icon: '📦' },
-  { id: 'link_2', name: 'Google', url: 'https://www.google.co.jp/', icon: '🔍' }
+// ★修正: V15で追加したカテゴリリスト
+export const INITIAL_LINK_CATEGORIES = [
+  { id: 'bank', name: '銀行' },
+  { id: 'card', name: 'カード' },
+  { id: 'shop', name: '通販/Pay' },
+  { id: 'infra', name: '公共料金' },
+  { id: 'other', name: 'その他' }
 ];
 
-// ★修正: 変動費テンプレート (楽天カードを削除)
+// ★修正: V15でカテゴリIDを付与した初期リンク
+export const INITIAL_MY_LINKS = [
+  { id: 'link_1', name: 'Amazon', url: 'https://www.amazon.co.jp/', icon: '📦', categoryId: 'shop' },
+  { id: 'link_2', name: 'Google', url: 'https://www.google.co.jp/', icon: '🔍', categoryId: 'other' }
+];
+
+// ★修正: 楽天カードを削除済みのテンプレート
 export const INITIAL_PAYMENT_TEMPLATES = [
   { id: 'tmpl_1', name: '電気代', accountId: null },
   { id: 'tmpl_2', name: '水道代', accountId: null },
   { id: 'tmpl_3', name: 'ガス代', accountId: null }
 ];
 
-// 買い物リストの初期値
 export const INITIAL_SHOPPING = {
   toBuy: [], 
   stock: [
@@ -50,7 +54,7 @@ export const INITIAL_SHOPPING = {
   history: [] 
 };
 
-// 祝日データ (2025) - ※logic.jsでライブラリを使うので、ここは削除してもOKですが念のため残すならこのまま
+// 祝日データ (logic.jsでライブラリを使うため実際は未使用だが互換性のため残す)
 export const HOLIDAYS_2025 = [
   '2025-01-01', '2025-01-13', '2025-02-11', '2025-02-23', '2025-02-24',
   '2025-03-20', '2025-04-29', '2025-05-03', '2025-05-04', '2025-05-05',
@@ -58,7 +62,6 @@ export const HOLIDAYS_2025 = [
   '2025-10-13', '2025-11-03', '2025-11-23', '2025-11-24'
 ];
 
-// 都道府県リスト
 export const PREFECTURES = [
   { name: '北海道 (札幌)', lat: 43.0621, lon: 141.3544 },
   { name: '青森', lat: 40.8244, lon: 140.7400 },
