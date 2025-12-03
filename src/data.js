@@ -18,27 +18,61 @@ export const INITIAL_JOBS = [];
 export const INITIAL_ACCOUNTS = [];
 export const INITIAL_RECURRING = [];
 
-// ★修正: V15で追加したカテゴリリスト
-export const INITIAL_LINK_CATEGORIES = [
+// リンクカテゴリ
+export const LINK_CATEGORIES = [
   { id: 'bank', name: '銀行' },
   { id: 'card', name: 'カード' },
-  { id: 'shop', name: '通販/Pay' },
+  { id: 'pay', name: 'Pay/電子マネー' },
+  { id: 'app', name: 'アプリ' },
+  { id: 'shop', name: '通販/店' },
   { id: 'infra', name: '公共料金' },
   { id: 'other', name: 'その他' }
 ];
 
-// ★修正: V15でカテゴリIDを付与した初期リンク
+// リンクプリセット
+export const PRESET_LINKS = [
+  { name: 'LINE', url: 'line://', short: 'LINE', cat: 'app' },
+  { name: 'Instagram', url: 'instagram://app', short: 'Insta', cat: 'app' },
+  { name: 'X(Twitter)', url: 'twitter://', short: 'X', cat: 'app' },
+  { name: 'PayPay', url: 'paypay://', short: 'PayPay', cat: 'pay' },
+  { name: 'Suica', url: 'suicaapp://', short: 'Suica', cat: 'pay' },
+  { name: 'Amazon', url: 'https://www.amazon.co.jp/', short: 'Amazon', cat: 'shop' },
+  { name: '楽天市場', url: 'https://www.rakuten.co.jp/', short: '楽天', cat: 'shop' },
+  { name: 'Yahoo!', url: 'https://shopping.yahoo.co.jp/', short: 'Yahoo', cat: 'shop' },
+  { name: 'メルカリ', url: 'mercari://', short: 'メルカリ', cat: 'shop' },
+  { name: '楽天カード', url: 'https://www.rakuten-card.co.jp/e-navi/', short: '楽天C', cat: 'card' },
+  { name: '三井住友(Vpass)', url: 'https://www.smbc-card.com/mem/top/index.jsp', short: 'Vpass', cat: 'card' },
+  { name: 'JCB(MyJCB)', url: 'https://my.jcb.co.jp/', short: 'JCB', cat: 'card' },
+  { name: 'Amex', url: 'https://global.americanexpress.com/login', short: 'Amex', cat: 'card' },
+  { name: 'イオンカード', url: 'https://www.aeon.co.jp/', short: 'イオンC', cat: 'card' },
+  { name: 'エポスカード', url: 'https://www.eposcard.co.jp/', short: 'エポス', cat: 'card' },
+  { name: 'PayPayカード', url: 'https://www.paypay-card.co.jp/', short: 'PayC', cat: 'card' },
+  { name: 'dカード', url: 'https://dcard.docomo.ne.jp/', short: 'dカード', cat: 'card' },
+  { name: '三菱UFJ', url: 'https://www.bk.mufg.jp/', short: 'MUFG', cat: 'bank' },
+  { name: '三井住友銀行', url: 'https://www.smbc.co.jp/', short: 'SMBC', cat: 'bank' },
+  { name: 'みずほ', url: 'https://www.mizuhobank.co.jp/', short: 'みずほ', cat: 'bank' },
+  { name: 'りそな', url: 'https://www.resonabank.co.jp/', short: 'りそな', cat: 'bank' },
+  { name: 'ゆうちょ', url: 'https://www.jp-bank.japanpost.jp/', short: '郵貯', cat: 'bank' },
+  { name: '楽天銀行', url: 'https://www.rakuten-bank.co.jp/', short: '楽銀', cat: 'bank' },
+  { name: '住信SBI', url: 'https://www.netbk.co.jp/contents/', short: 'SBI', cat: 'bank' },
+  { name: 'PayPay銀行', url: 'https://www.paypay-bank.co.jp/', short: 'Pay銀', cat: 'bank' },
+  { name: 'ソニー銀行', url: 'https://moneykit.net/', short: 'Sony', cat: 'bank' },
+  { name: 'イオン銀行', url: 'https://www.aeonbank.co.jp/', short: 'イオン', cat: 'bank' },
+  { name: 'GMOあおぞら', url: 'https://gmo-aozora.com/', short: 'GMO', cat: 'bank' },
+  { name: 'セブン銀行', url: 'https://www.sevenbank.co.jp/', short: 'セブン', cat: 'bank' },
+  { name: '東京電力', url: 'https://www.kurashi.tepco.co.jp/', short: '東電', cat: 'infra' },
+  { name: '東京ガス', url: 'https://my.tokyo-gas.co.jp/', short: '東ガス', cat: 'infra' },
+  { name: '大阪ガス', url: 'https://auth.osakagas.co.jp/', short: '大ガス', cat: 'infra' },
+  { name: '水道局', url: 'https://www.waterworks.metro.tokyo.lg.jp/', short: '水道', cat: 'infra' },
+];
+
 export const INITIAL_MY_LINKS = [
   { id: 'link_1', name: 'Amazon', url: 'https://www.amazon.co.jp/', icon: '📦', categoryId: 'shop' },
   { id: 'link_2', name: 'Google', url: 'https://www.google.co.jp/', icon: '🔍', categoryId: 'other' }
 ];
 
-// ★修正: 楽天カードを削除済みのテンプレート
-export const INITIAL_PAYMENT_TEMPLATES = [
-  { id: 'tmpl_1', name: '電気代', accountId: null },
-  { id: 'tmpl_2', name: '水道代', accountId: null },
-  { id: 'tmpl_3', name: 'ガス代', accountId: null }
-];
+// ★修正: テンプレート初期値を空に
+export const INITIAL_PAYMENT_TEMPLATES = [];
 
 export const INITIAL_SHOPPING = {
   toBuy: [], 
@@ -54,7 +88,7 @@ export const INITIAL_SHOPPING = {
   history: [] 
 };
 
-// 祝日データ (logic.jsでライブラリを使うため実際は未使用だが互換性のため残す)
+// 祝日データ
 export const HOLIDAYS_2025 = [
   '2025-01-01', '2025-01-13', '2025-02-11', '2025-02-23', '2025-02-24',
   '2025-03-20', '2025-04-29', '2025-05-03', '2025-05-04', '2025-05-05',
