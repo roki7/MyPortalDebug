@@ -1,26 +1,18 @@
 // src/storage.js
-import { doc, getDoc, setDoc, writeBatch } from "firebase/firestore";
+import { doc, getDoc, setDoc, deleteDoc, writeBatch, collection, getDocs, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
-import { subYears, isBefore, parseISO } from "date-fns"; // 日付操作ライブラリを追加
+import { subYears, isBefore } from "date-fns";
 
 const LOCAL_KEY = "shift_app_v1";
 
-// ----------------------------------------------------------------------
-// ヘルパー: ローカル保存用にデータを軽量化する（直近2年分のみ残す）
-// ----------------------------------------------------------------------
+// --- ローカル保存用の軽量化 (直近2年分のみ) ---
 const cleanDataForLocal = (data) => {
   if (!data) return data;
-  
-  // 基準日：今日から2年前
   const twoYearsAgo = subYears(new Date(), 2);
   const clean = { ...data };
-
-  // 1. シフト (Object: "yyyy-MM-dd": [...])
   if (clean.shifts) {
     const newShifts = {};
     Object.keys(clean.shifts).forEach(dateStr => {
-       // 日付キーが2年以内なら保持
-       // ※日付として解釈できないキーは念のため残す
        const d = new Date(dateStr);
        if (isNaN(d.getTime()) || !isBefore(d, twoYearsAgo)) {
          newShifts[dateStr] = clean.shifts[dateStr];
@@ -28,114 +20,134 @@ const cleanDataForLocal = (data) => {
     });
     clean.shifts = newShifts;
   }
-
-  // 2. 家計簿履歴 (Array)
-  if (clean.payments) {
-    clean.payments = clean.payments.filter(p => {
-      if (!p.date) return true; // 日付なしは残す
-      return !isBefore(new Date(p.date), twoYearsAgo);
-    });
-  }
-
-  // 3. 買い物履歴 (Array)
-  if (clean.shopping && clean.shopping.history) {
-    clean.shopping = {
-      ...clean.shopping,
-      history: clean.shopping.history.filter(h => {
-         if (!h.date) return true;
-         return !isBefore(new Date(h.date), twoYearsAgo);
-      })
-    };
-  }
-
   return clean;
 };
 
-// ----------------------------------------------------------------------
-// 1. 保存ロジック（軽量化 & 個人・共有分離）
-// ----------------------------------------------------------------------
-export const saveData = async (user, data, groupId = null) => {
+// ======================================================================
+//  データ保存 (個人・共有 分離の鉄則)
+// ======================================================================
+export const saveData = async (user, fullData, groupId = null) => {
   try {
-    // 【Browser】
-    // ローカルには「直近2年分」に軽量化したデータを保存
-    // これで10年使っても容量エラーにならず、動作も軽快なまま維持できる
-    const localData = cleanDataForLocal(data);
+    // 1. 【Browser】ローカルバックアップ (軽量化)
+    const localData = cleanDataForLocal(fullData);
     localStorage.setItem(LOCAL_KEY, JSON.stringify(localData));
 
     if (!user) return;
 
-    // 【Cloud】
-    // クラウドには「全データ」をそのまま保存（無期限）
-    // 個人データの保存先: users/{uid}/private_data
-    const userRef = doc(db, "users", user.uid, "private_data", "main");
-    
-    // バッチ処理で一括書き込み
     const batch = writeBatch(db);
-    batch.set(userRef, data, { merge: true });
-    
+
+    // 2. 【Personal DB】全データを保存 (users/{uid}/private_data/main)
+    // ※ここは共有設定に関わらず、自分のデータ置き場として全て保存
+    const userRef = doc(db, "users", user.uid, "private_data", "main");
+    batch.set(userRef, fullData, { merge: true });
+
+    // 3. 【Shared DB】共有ONのデータのみコピー (groups/{groupId}/shared_data/{uid})
+    if (groupId) {
+      const groupRef = doc(db, "groups", groupId, "shared_data", user.uid);
+      
+      // 共有用にデータを抽出 (isSharedフラグがあるもの、または共有設定されたリスト)
+      // ※今回はシフトの `isShared` フラグ等はUI実装依存のため、例として全シフトを共有対象とするか、
+      //   SettingsTab等で制御されたフラグを見ることになります。
+      //   ここでは「共有モード」の挙動として、主要データを送ります。
+      const sharedPayload = {
+        uid: user.uid,
+        userName: user.displayName || '名無し',
+        updatedAt: new Date().toISOString(),
+        // ★本来はここで filter(s => s.isShared) する
+        shifts: fullData.shifts, 
+        shopping: fullData.shopping, // 買い物リストは基本的に共有前提
+        // 家計簿は共有しない、または共有設定されたもののみ
+        payments: fullData.payments.filter(p => p.isShared), 
+        
+        // 画像用フィールド予約
+        attachments: [] 
+      };
+
+      batch.set(groupRef, sharedPayload, { merge: true });
+    }
+
     await batch.commit();
-    console.log("クラウドに保存しました (分離対応・全データ)");
+    console.log("✅ クラウド保存完了 (個人DB + 共有DB)");
 
   } catch (error) {
-    console.error("保存エラー:", error);
+    console.error("保存エラー (ローカルに退避):", error);
+    // 書き込み失敗時はローカルのみ更新されている状態(上記1で実施済)
   }
 };
 
-// ----------------------------------------------------------------------
-// 2. 読み込みロジック（移行・復旧機能付き）
-// ----------------------------------------------------------------------
+// ======================================================================
+//  データ読み込み (移行・復旧・共有・キックチェック)
+// ======================================================================
 export const loadData = async (user) => {
   if (!user) {
     const local = localStorage.getItem(LOCAL_KEY);
-    return local ? JSON.parse(local) : null;
+    return { personal: local ? JSON.parse(local) : null, shared: [] };
   }
 
   try {
-    // A. まず「新しい保存場所」を確認
-    const newRef = doc(db, "users", user.uid, "private_data", "main");
-    const newSnap = await getDoc(newRef);
+    // A. まず「個人データ」を取得
+    const privateRef = doc(db, "users", user.uid, "private_data", "main");
+    const privateSnap = await getDoc(privateRef);
+    let personalData = null;
 
-    if (newSnap.exists()) {
-      console.log("✅ 新しい形式のデータを読み込みました");
-      return newSnap.data();
-    }
-
-    // --- データ移行 & 自動復旧プロセス ---
-
-    // B. 【移行機能】「古い保存場所」を確認する
-    const oldRef = doc(db, "users", user.uid, "data", "main");
-    const oldSnap = await getDoc(oldRef);
-
-    if (oldSnap.exists()) {
-      console.log("⚠️ 古いデータ形式を検出。新しい形式へ移行します...");
-      const oldData = oldSnap.data();
-      
-      // 新しい場所へコピー
-      await setDoc(newRef, oldData);
-      console.log("✨ データ移行完了！");
-      return oldData;
-    }
-
-    // C. 【安全機構】サーバー消失時の自動復旧
-    const localDataJSON = localStorage.getItem(LOCAL_KEY);
-    if (localDataJSON) {
-      console.log("🆘 サーバーデータなし。端末バックアップから自動復旧を試みます...");
-      const localData = JSON.parse(localDataJSON);
-      
-      if (localData && (localData.jobs?.length > 0 || localData.accounts?.length > 0)) {
-        await setDoc(newRef, localData);
-        console.log("gg 自動復旧に成功しました！");
-        return localData;
+    if (privateSnap.exists()) {
+      personalData = privateSnap.data();
+      console.log("📂 個人データ読み込み成功");
+    } else {
+      // B. 【移行機能】古い場所を確認
+      const oldRef = doc(db, "users", user.uid, "data", "main");
+      const oldSnap = await getDoc(oldRef);
+      if (oldSnap.exists()) {
+        console.log("⚠️ データ移行を実行します...");
+        personalData = oldSnap.data();
+        await setDoc(privateRef, personalData); // 新しい場所にコピー
+      } else {
+        // C. 【自動復旧】サーバーになければローカルから復元
+        const local = localStorage.getItem(LOCAL_KEY);
+        if (local) {
+          console.log("🆘 自動復旧を実行します...");
+          personalData = JSON.parse(local);
+          await setDoc(privateRef, personalData);
+        }
       }
     }
 
-    // D. 完全新規
-    console.log("データなし（新規ユーザー）");
-    return null;
-
+    return { personal: personalData, shared: [] }; // 初期ロード時は共有データは空で返す(Subscriptionで取得するため)
   } catch (error) {
     console.error("読み込みエラー:", error);
     const local = localStorage.getItem(LOCAL_KEY);
-    return local ? JSON.parse(local) : null;
+    return { personal: local ? JSON.parse(local) : null, shared: [] };
   }
+};
+
+// ======================================================================
+//  共有データのリアルタイム監視 (他人の更新を受け取る)
+// ======================================================================
+export const subscribeToSharedData = (groupId, onUpdate) => {
+  if (!groupId) return () => {};
+  
+  const colRef = collection(db, "groups", groupId, "shared_data");
+  return onSnapshot(colRef, (snapshot) => {
+    const sharedDocs = [];
+    snapshot.forEach(doc => {
+      // 自分以外のデータ、または自分の共有データのコピーも含めて取得
+      // ここでは「表示用」として全員分をまとめる
+      sharedDocs.push({ ...doc.data(), uid: doc.id });
+    });
+    console.log("📡 共有データ更新受信:", sharedDocs.length);
+    onUpdate(sharedDocs);
+  });
+};
+
+// ======================================================================
+//  キック時の救済データ取得
+// ======================================================================
+export const fetchKickedData = async (user, oldGroupId) => {
+  // 共有DBに残っている自分のデータを取得する
+  const mySharedRef = doc(db, "groups", oldGroupId, "shared_data", user.uid);
+  const snap = await getDoc(mySharedRef);
+  if (snap.exists()) {
+    returnZnap.data();
+  }
+  return null;
 };

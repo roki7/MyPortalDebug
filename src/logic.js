@@ -233,4 +233,41 @@ export const generateShiftsForYear = (targetYear, jobs) => {
       }
     });
   }); return newShifts;
+};// src/logic.js (既存の関数はそのままに、以下を追加)
+
+// ... existing imports and functions ...
+
+// 8. 共有データのマージ (Shared View用)
+export const mergeSharedData = (personalData, sharedGroupDocs) => {
+  // ベースは自分のデータ
+  const merged = { ...personalData };
+  const mergedShifts = { ...(personalData.shifts || {}) };
+  
+  // 他人のデータをマージ
+  sharedGroupDocs.forEach(doc => {
+    if (doc.uid === personalData.uid) return; // 自分の共有コピーは無視(personalData優先)
+
+    // シフトのマージ
+    if (doc.shifts) {
+      Object.keys(doc.shifts).forEach(date => {
+        const theirShifts = doc.shifts[date] || [];
+        // 他人のシフトには色をつける、または名前を入れるなどの加工が可能
+        const processedShifts = theirShifts.map(s => ({
+            ...s,
+            isShared: true,
+            ownerName: doc.userName, // 誰のシフトか
+            color: '#9e9e9e' // 共有シフトはグレー等の区別
+        }));
+        
+        if (mergedShifts[date]) {
+            mergedShifts[date] = [...mergedShifts[date], ...processedShifts];
+        } else {
+            mergedShifts[date] = processedShifts;
+        }
+      });
+    }
+    // 買い物リスト等のマージも同様に行う
+  });
+
+  return { ...merged, shifts: mergedShifts };
 };
