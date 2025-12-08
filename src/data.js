@@ -64,7 +64,7 @@ export const INITIAL_MEMBERS = [{ id: 'me', name: '自分', color: '#1976d2' }];
 export const INITIAL_SHOPPING = { list: [], stock: [] };
 export const INITIAL_SETTINGS = { calcMode: 'realtime', location: PREFECTURES[7], targetLimit: 1030000 };
 
-// --- MyLinks カテゴリ ---
+// --- 頂いた正しいカテゴリ ---
 export const LINK_CATEGORIES = [
   { id: 'bank', name: '銀行' },
   { id: 'card', name: 'カード' },
@@ -75,8 +75,8 @@ export const LINK_CATEGORIES = [
   { id: 'other', name: 'その他' }
 ];
 
-// --- MyLinks プリセット ---
-export const RAW_PRESETS = [
+// --- 頂いた正しいプリセット ---
+export const PRESET_LINKS = [
   { name: 'LINE', url: 'line://', short: 'LINE', cat: 'app' },
   { name: 'Instagram', url: 'instagram://app', short: 'Insta', cat: 'app' },
   { name: 'X(Twitter)', url: 'twitter://', short: 'X', cat: 'app' },
@@ -112,7 +112,8 @@ export const RAW_PRESETS = [
   { name: '水道局', url: 'https://www.waterworks.metro.tokyo.lg.jp/', short: '水道', cat: 'infra' },
 ];
 
-export const INITIAL_MY_LINKS = RAW_PRESETS.map((p, i) => ({
+// ★追加: アプリで使える形式に変換してエクスポート
+export const INITIAL_MY_LINKS = PRESET_LINKS.map((p, i) => ({
   id: `preset_${i}`,
   title: p.name,
   url: p.url,

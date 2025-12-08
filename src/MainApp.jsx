@@ -1,17 +1,14 @@
-// src/MainApp.jsx
-// ... (importsは前回と同じ) ...
-// ※上書き用として全文記載します
-
 import React, { useState, useEffect } from 'react';
 import { 
   Box, Container, Paper, Typography, Tabs, Tab, LinearProgress, Chip, IconButton, 
-  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, Avatar, 
-  Snackbar, Alert, Drawer, List, ListItem, ListItemIcon, ListItemText, Divider, Fab 
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, Avatar, Fab,
+  Drawer, List, ListItem, ListItemIcon, ListItemText, Divider, 
+  Snackbar, Alert, TextField
 } from '@mui/material';
 import { 
   CalendarMonth, AccountBalance, Settings, EmojiEvents, ArrowBack, ArrowForward, 
-  LocationOn, ShoppingCart, Assessment, Login, CloudDone, CloudOff, MoreHoriz, Apps, 
-  Close, BeachAccess, Groups, Person
+  ShoppingCart, Assessment, Login, CloudDone, CloudOff, MoreHoriz, Apps, 
+  Groups, Person
 } from '@mui/icons-material';
 import { format, addMonths, subMonths, parse } from 'date-fns';
 
@@ -48,7 +45,6 @@ export default function MainApp() {
   const [openDrawer, setOpenDrawer] = useState(false);
   const [viewMode, setViewMode] = useState('personal'); 
 
-  // --- 初期値セット ---
   const [settings, setSettings] = useState(INITIAL_SETTINGS);
   const [members, setMembers] = useState(INITIAL_MEMBERS);
   const [jobs, setJobs] = useState(INITIAL_JOBS);
@@ -63,7 +59,6 @@ export default function MainApp() {
 
   const [sharedDocs, setSharedDocs] = useState([]);
   const [kickDialog, setKickDialog] = useState(false);
-
   const [currentDate, setCurrentDate] = useState(new Date());
   const [earnings, setEarnings] = useState({ fixed: 0, projected: 0, workDays: 0 });
   const [annualIncome, setAnnualIncome] = useState(0);
@@ -79,7 +74,6 @@ export default function MainApp() {
       try {
         const data = await loadData(currentUser);
         const d = data?.personal || {};
-        
         setSettings(d.settings || INITIAL_SETTINGS);
         setMembers(d.members || INITIAL_MEMBERS);
         setJobs(d.jobs || INITIAL_JOBS);
@@ -89,16 +83,11 @@ export default function MainApp() {
         setPayments(d.payments || []);
         setTemplates(d.templates || INITIAL_PAYMENT_TEMPLATES);
         setShopping(d.shopping || INITIAL_SHOPPING);
-        
-        if(d.myLinks && d.myLinks.length > 0) setMyLinks(d.myLinks); else setMyLinks(INITIAL_MY_LINKS);
-        if(d.linkCategories && d.linkCategories.length > 0) setLinkCategories(d.linkCategories); else setLinkCategories(LINK_CATEGORIES);
-        
+        if(d.myLinks) setMyLinks(d.myLinks);
+        if(d.linkCategories) setLinkCategories(d.linkCategories);
         setIsLoaded(true);
         if (userProfile?.kickedFrom) setKickDialog(true);
-      } catch (e) {
-        console.error("Init Error", e);
-        setIsLoaded(true);
-      }
+      } catch (e) { console.error(e); setIsLoaded(true); }
     };
     init();
   }, [currentUser, userProfile]);
@@ -113,12 +102,10 @@ export default function MainApp() {
   useEffect(() => {
     if (!isLoaded) return;
     const timer = setTimeout(() => {
-      const fullData = { 
+      saveData(currentUser, { 
         settings, members, jobs, shifts, accounts, recurring, 
-        payments, templates, shopping, 
-        myLinks: myLinks || [], linkCategories: linkCategories || [] 
-      };
-      saveData(currentUser, fullData, userProfile?.groupId); 
+        payments, templates, shopping, myLinks, linkCategories 
+      }, userProfile?.groupId); 
     }, 1000);
     return () => clearTimeout(timer);
   }, [settings, members, jobs, shifts, accounts, recurring, payments, templates, shopping, myLinks, linkCategories, currentUser, isLoaded, userProfile]);
@@ -137,7 +124,6 @@ export default function MainApp() {
 
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
-  const handleDateChange = (e) => { if(e.target.value) setCurrentDate(parse(e.target.value, 'yyyy-MM', new Date())); };
   const handleAddJob = (job) => setJobs([...jobs, job]);
   const handleUpdateJob = (updatedJob) => setJobs(jobs.map(j => j.id === updatedJob.id ? updatedJob : j));
   const handleDeleteJob = (id) => setJobs(jobs.filter(j => j.id !== id));
@@ -158,42 +144,54 @@ export default function MainApp() {
   const handleUpdatePayment = (updatedPay) => setPayments(payments.map(p => p.id === updatedPay.id ? updatedPay : p));
   const handleUpdateStock = (newStockList) => { setShopping({ ...shopping, stock: newStockList }); };
   const handleGenerateAnnualShifts = (year) => { if (jobs.length === 0) { alert("仕事を登録してください"); return; } if (!window.confirm(`${year}年のシフトを一括生成しますか？`)) return; const newShifts = generateShiftsForYear(year, jobs); const merged = { ...shifts }; Object.keys(newShifts).forEach(d => merged[d] = [...(merged[d]||[]), ...newShifts[d]]); setShifts(merged); alert("完了"); };
-  const handleGenerateRange = (start, end, jobId) => { const targetJob = jobs.find(j => j.id === parseInt(jobId)); if (!targetJob) return; const newShifts = generateShiftsRange(start, end, targetJob, targetJob.skipHolidays); const merged = { ...shifts }; Object.keys(newShifts).forEach(d => merged[d] = [...(merged[d]||[]), ...newShifts[d]]); setShifts(merged); alert("完了"); };
+  
+  const handleGenerateRange = (start, end, jobId) => { 
+      const targetJob = jobs.find(j => String(j.id) === String(jobId)); 
+      if (!targetJob) { alert("仕事が見つかりません"); return; }
+      
+      const newShifts = generateShiftsRange(start, end, targetJob, targetJob.skipHolidays); 
+      const merged = { ...shifts }; 
+      Object.keys(newShifts).forEach(d => merged[d] = [...(merged[d]||[]), ...newShifts[d]]); 
+      setShifts(merged); 
+      alert("完了しました"); 
+  };
+  
   const handleDeleteRange = (start, end, jobId) => { setShifts(deleteShiftsRange(shifts, start, end, parseInt(jobId))); alert("削除"); };
   
-  // ★修正: 引数を拡張し、単発登録時の時間や振込日を受け取る
-  const handleAddShift = (job, manualAmount = 0, customPayDate = '', customStart = '', customEnd = '') => {
-    if (!selectedDate) return;
-    const dateStr = format(selectedDate, 'yyyy-MM-dd');
-    
-    let newShift = { 
-        id: Date.now(), 
-        jobId: job.id, 
-        status: 'normal', 
-        amount: manualAmount, 
-        start: job.defaultStart || '09:00', 
-        end: job.defaultEnd || '17:00', 
-        isShared: viewMode === 'shared',
-        customPayDate: customPayDate // 振込日
-    };
-
-    if (job.id === 'custom') { 
-        newShift.customName = job.name; 
-        newShift.start = customStart; // 指定された時間
-        newShift.end = customEnd; 
-    } else if (job.type === 'manual' && !manualAmount) { 
-        const amt = prompt("金額", "0"); 
-        if(amt) newShift.amount = parseInt(amt); 
-    }
-    
-    const current = shifts[dateStr] || [];
-    setShifts({ ...shifts, [dateStr]: [...current, newShift] });
-    setOpenMenu(false);
+  const handleAddShift = (job, manualAmount = 0) => { 
+      if (!selectedDate) return; 
+      const dateStr = format(selectedDate, 'yyyy-MM-dd'); 
+      // 新規登録時もJobから休憩時間を引っ張る
+      let newShift = { 
+          id: Date.now(), 
+          jobId: job.id, 
+          status: 'normal', 
+          amount: manualAmount, 
+          start: job.defaultStart || '09:00', 
+          end: job.defaultEnd || '17:00', 
+          breakTime: job.breakTime || 0, // ★ここでJobの値をセット
+          isShared: viewMode === 'shared' 
+      }; 
+      if (job.id === 'custom') { newShift.customName = job.name; newShift.start = ''; newShift.end = ''; } 
+      else if (job.type === 'manual' && !manualAmount) { const amt = prompt("金額", "0"); if(amt) newShift.amount = parseInt(amt); } 
+      
+      const current = shifts[dateStr] || []; 
+      setShifts({ ...shifts, [dateStr]: [...current, newShift] }); 
+      setOpenMenu(false); 
   };
-
+  
   const handleSaveShiftTime = () => { if (!editShift || !selectedDate) return; const dateStr = format(selectedDate, 'yyyy-MM-dd'); setShifts({ ...shifts, [dateStr]: shifts[dateStr].map(s => s.id === editShift.id ? editShift : s) }); setEditShift(null); };
   const handleDeleteShift = () => { if (!editShift || !selectedDate) return; const dateStr = format(selectedDate, 'yyyy-MM-dd'); setShifts({ ...shifts, [dateStr]: shifts[dateStr].filter(s => s.id !== editShift.id) }); setEditShift(null); };
-  const handleUpdateShiftStatus = (status) => { if (!editShift || !selectedDate) return; const dateStr = format(selectedDate, 'yyyy-MM-dd'); const updated = { ...editShift, status: editShift.status === status ? 'normal' : status }; setShifts({ ...shifts, [dateStr]: shifts[dateStr].map(s => s.id === editShift.id ? updated : s) }); setEditShift(updated); };
+  
+  const handleUpdateShiftStatus = (status) => { 
+      if (!editShift || !selectedDate) return; 
+      const newStatus = editShift.status === status ? 'normal' : status;
+      const updated = { ...editShift, status: newStatus }; 
+      const dateStr = format(selectedDate, 'yyyy-MM-dd'); 
+      setShifts({ ...shifts, [dateStr]: shifts[dateStr].map(s => s.id === editShift.id ? updated : s) }); 
+      setEditShift(updated); 
+  };
+
   const handleFullImport = (importedData) => { if (!importedData) return; if (window.confirm('データを復元しますか？')) { setSettings(importedData.settings||settings); setMembers(importedData.members||members); setJobs(importedData.jobs||jobs); setShifts(importedData.shifts||shifts); setAccounts(importedData.accounts||accounts); setRecurring(importedData.recurring||recurring); setPayments(importedData.payments||payments); setTemplates(importedData.templates||templates); setShopping(importedData.shopping||shopping); setMyLinks(importedData.myLinks||myLinks); setLinkCategories(importedData.linkCategories||linkCategories); alert('復元しました'); } };
 
   const LoginStatus = () => { if (currentUser) return (<IconButton onClick={() => { if(window.confirm("ログアウト？")) logout(); }} size="small"><Avatar sx={{ width: 24, height: 24, bgcolor: 'orange' }} src={currentUser.photoURL} /></IconButton>); return (<Button onClick={login} size="small" variant="contained" color="secondary" startIcon={<Login />} sx={{ fontSize: 10 }}>ログイン</Button>); };
@@ -226,16 +224,51 @@ export default function MainApp() {
             <Typography variant="caption">💰 世帯年収: ¥{annualIncome.toLocaleString()}</Typography>
         </Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <Box><Typography variant="caption" sx={{ opacity: 0.7 }}>💰 今月の確定 (世帯計)</Typography><Typography variant="h4" fontWeight="bold">¥{earnings.fixed.toLocaleString()}</Typography></Box>
+          <Box><Typography variant="caption" sx={{ opacity: 0.7 }}>💰 今月の確定 (振り込みベース)</Typography><Typography variant="h4" fontWeight="bold">¥{earnings.fixed.toLocaleString()}</Typography></Box>
           <Box sx={{ textAlign: 'right' }}><Typography variant="caption" sx={{ opacity: 0.7 }}>着地見込み</Typography><Typography variant="h6">¥{earnings.projected.toLocaleString()}</Typography></Box>
         </Box>
         <LinearProgress variant="determinate" value={earnings.projected > 0 ? (earnings.fixed / earnings.projected) * 100 : 0} sx={{ mt: 1, height: 6, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.1)', '& .MuiLinearProgress-bar': { bgcolor: '#00e676' } }} />
       </Paper>
 
       <Box sx={{ p: 2 }}>
-        {tabIndex === 0 && <CalendarTab currentDate={currentDate} shifts={displayShifts} jobs={jobs} weatherData={weatherData} onDateClick={(d) => { setSelectedDate(d); setOpenMenu(true); }} onShiftClick={(s, d) => { setSelectedDate(d); setEditShift(s); }} onPrevMonth={handlePrevMonth} onNextMonth={handleNextMonth} />}
+        {tabIndex === 0 && (
+            <CalendarTab 
+                currentDate={currentDate} 
+                shifts={displayShifts} 
+                jobs={jobs} 
+                weatherData={weatherData} 
+                onDateClick={(d) => { setSelectedDate(d); setOpenMenu(true); }} 
+                // ★修正: 休憩時間の初期値セット（強力版）
+                onShiftClick={(s, d) => { 
+                    setSelectedDate(d); 
+                    const job = jobs.find(j => String(j.id) === String(s.jobId));
+                    let initBreak = s.breakTime;
+                    
+                    // 値がundefined、null、あるいは空文字の場合はJobから引っ張る
+                    if (initBreak === undefined || initBreak === null || initBreak === '') {
+                        initBreak = job?.breakTime || 0;
+                    }
+                    
+                    setEditShift({ ...s, breakTime: initBreak });
+                }} 
+                onPrevMonth={handlePrevMonth} 
+                onNextMonth={handleNextMonth} 
+            />
+        )}
         
-        {tabIndex === 1 && <FinanceTab accounts={accounts} payments={payments} templates={templates} myLinks={myLinks} currentDate={currentDate} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onAddPayment={handleAddPayment} onUpdatePayment={handleUpdatePayment} onAddTemplate={handleAddTemplate} onDeleteTemplate={handleDeleteTemplate} onAddMyLink={handleAddMyLink} onDeleteMyLink={handleDeleteMyLink} recurring={recurring} onAddRecurring={handleAddRecurring} onUpdateRecurring={handleUpdateRecurring} onDeleteRecurring={handleDeleteRecurring} onUpdateBalance={(id, val) => setAccounts(accounts.map(a => a.id===id ? {...a, balance: parseInt(val)}:a))} onTogglePaid={(id) => setPayments(payments.map(p => p.id===id ? {...p, paid: !p.paid}:p))} />}
+        {tabIndex === 1 && (
+            <FinanceTab 
+                accounts={accounts} payments={payments} templates={templates} myLinks={myLinks} currentDate={currentDate} 
+                onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} 
+                onAddPayment={handleAddPayment} onUpdatePayment={handleUpdatePayment} 
+                onAddTemplate={handleAddTemplate} onDeleteTemplate={handleDeleteTemplate} 
+                onAddMyLink={handleAddMyLink} onDeleteMyLink={handleDeleteMyLink} 
+                recurring={recurring} onAddRecurring={handleAddRecurring} onUpdateRecurring={handleUpdateRecurring} onDeleteRecurring={handleDeleteRecurring} 
+                onUpdateBalance={(id, val) => setAccounts(accounts.map(a => a.id===id ? {...a, balance: parseInt(val)}:a))} 
+                onTogglePaid={(id) => setPayments(payments.map(p => p.id===id ? {...p, paid: !p.paid}:p))} 
+                onPrevMonth={handlePrevMonth} onNextMonth={handleNextMonth}
+            />
+        )}
         
         {tabIndex === 2 && <ShoppingTab shopping={shopping} onUpdateShopping={setShopping} onUpdateStock={handleUpdateStock} onAddPayment={handleAddPayment} accounts={accounts} />}
         {tabIndex === 3 && <MyLinksTab myLinks={myLinks} linkCategories={linkCategories} onAddMyLink={handleAddMyLink} onUpdateMyLink={handleUpdateMyLink} onDeleteMyLink={handleDeleteMyLink} onAddCategory={handleAddCategory} onDeleteCategory={handleDeleteCategory} onEditCategory={handleEditCategory} />}
@@ -251,10 +284,101 @@ export default function MainApp() {
       </Paper>
 
       <Fab color="secondary" sx={{ position: 'fixed', bottom: 'calc(60px + env(safe-area-inset-bottom))', right: 16, zIndex: 100 }} onClick={() => setOpenDrawer(true)}><MoreHoriz /></Fab>
-      <Drawer anchor="bottom" open={openDrawer} onClose={() => setOpenDrawer(false)} PaperProps={{ sx: { borderRadius: '16px 16px 0 0', pb: 'env(safe-area-inset-bottom)' } }}><Box sx={{ p: 2 }}><List>{moreTabs.map(tab => (<React.Fragment key={tab.index}><ListItem button onClick={() => { setTabIndex(tab.index); setOpenDrawer(false); }}><ListItemIcon>{tab.icon}</ListItemIcon><ListItemText primary={tab.label} /></ListItem><Divider /></React.Fragment>))}</List></Box></Drawer>
+      <Drawer anchor="bottom" open={openDrawer} onClose={() => setOpenDrawer(false)} PaperProps={{ sx: { borderRadius: '16px 16px 0 0', pb: 'env(safe-area-inset-bottom)' } }}>
+          <Box sx={{ p: 2 }}>
+              <List>
+                  {moreTabs.map(tab => (
+                      <React.Fragment key={tab.index}>
+                          <ListItem button onClick={() => { setTabIndex(tab.index); setOpenDrawer(false); }}>
+                              <ListItemIcon>{tab.icon}</ListItemIcon>
+                              <ListItemText primary={tab.label} />
+                          </ListItem>
+                          <Divider />
+                      </React.Fragment>
+                  ))}
+              </List>
+          </Box>
+      </Drawer>
+
       <ShiftDrawer open={openMenu} onClose={() => setOpenMenu(false)} jobs={jobs} members={members} selectedDate={selectedDate} onAddShift={handleAddShift} />
-      <Dialog open={!!editShift} onClose={() => setEditShift(null)} fullWidth maxWidth="xs"><DialogTitle>シフト操作</DialogTitle><DialogContent sx={{pt: 2}}>{editShift?.jobId !== 'custom' && (<><Box sx={{ display: 'flex', gap: 2, mb: 3, mt: 1 }}><TextField label="開始" type="time" InputLabelProps={{shrink:true}} fullWidth value={editShift?.start || ''} onChange={(e)=>setEditShift({...editShift, start: e.target.value})} /><TextField label="終了" type="time" InputLabelProps={{shrink:true}} fullWidth value={editShift?.end || ''} onChange={(e)=>setEditShift({...editShift, end: e.target.value})} /></Box><TextField label="休憩 (分)" type="number" size="small" fullWidth sx={{mb:3}} value={editShift?.breakTime !== undefined ? editShift.breakTime : 60} onChange={(e)=>setEditShift({...editShift, breakTime: e.target.value})} /></>)}{editShift?.jobId === 'custom' && (<TextField label="金額" type="number" fullWidth sx={{mb:3, mt:1}} value={editShift?.amount} onChange={(e)=>setEditShift({...editShift, amount: parseInt(e.target.value)})} />)}<Typography variant="caption" color="textSecondary" sx={{mb:1, display:'block'}}>※変更したら必ず「保存」を押してください</Typography><Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}><Chip icon={<BeachAccess />} label="有給" onClick={() => handleUpdateShiftStatus('paid_leave')} color={editShift?.status === 'paid_leave' ? "primary" : "default"} variant={editShift?.status === 'paid_leave' ? "filled" : "outlined"} /><Chip icon={<Close />} label="欠勤" onClick={() => handleUpdateShiftStatus('absence')} color={editShift?.status === 'absence' ? "error" : "default"} variant={editShift?.status === 'absence' ? "filled" : "outlined"} /></Box></DialogContent><DialogActions sx={{ display: 'flex', justifyContent: 'space-between', px: 3, pb: 2 }}><Button onClick={handleDeleteShift} color="error">削除</Button><Box><Button onClick={() => setEditShift(null)} color="inherit" sx={{ mr: 2 }}>キャンセル</Button><Button onClick={handleSaveShiftTime} variant="contained" size="large">保存</Button></Box></DialogActions></Dialog>
+      
+      <Dialog open={!!editShift} onClose={() => setEditShift(null)} fullWidth maxWidth="xs">
+        <DialogTitle>シフト操作</DialogTitle>
+        <DialogContent sx={{pt: 2, display:'flex', flexDirection:'column', gap:2}}>
+            {editShift && (
+                <>
+                    <Typography variant="subtitle1" fontWeight="bold">
+                        {editShift.customName || jobs.find(j => String(j.id) === String(editShift.jobId))?.name}
+                    </Typography>
+                    
+                    <Box sx={{display:'flex', gap:1}}>
+                         <Button 
+                             fullWidth 
+                             variant={editShift.status==='paid_leave'?'contained':'outlined'} 
+                             color="success"
+                             onClick={()=>handleUpdateShiftStatus('paid_leave')}
+                         >
+                             有給
+                         </Button>
+                         <Button 
+                             fullWidth 
+                             variant={editShift.status==='absence'?'contained':'outlined'} 
+                             color="error"
+                             onClick={()=>handleUpdateShiftStatus('absence')}
+                         >
+                             欠勤
+                         </Button>
+                    </Box>
+
+                    <Box sx={{display:'flex', gap:2}}>
+                        <TextField 
+                            label="開始" 
+                            type="time" 
+                            fullWidth 
+                            InputLabelProps={{shrink:true}}
+                            value={editShift.start}
+                            onChange={(e)=>setEditShift({...editShift, start:e.target.value})}
+                            disabled={editShift.status !== 'normal'}
+                            autoComplete="off"
+                        />
+                        <TextField 
+                            label="終了" 
+                            type="time" 
+                            fullWidth 
+                            InputLabelProps={{shrink:true}}
+                            value={editShift.end}
+                            onChange={(e)=>setEditShift({...editShift, end:e.target.value})}
+                            disabled={editShift.status !== 'normal'}
+                            autoComplete="off"
+                        />
+                    </Box>
+
+                    <TextField 
+                        label="休憩 (分)" 
+                        type="number" 
+                        fullWidth 
+                        value={editShift.breakTime}
+                        onChange={(e)=>setEditShift({...editShift, breakTime:e.target.value})}
+                        disabled={editShift.status !== 'normal'}
+                        placeholder="例: 60"
+                        autoComplete="off"
+                    />
+                </>
+            )}
+        </DialogContent>
+        <DialogActions>
+            <Button onClick={handleDeleteShift} color="error">削除</Button>
+            <Button onClick={handleSaveShiftTime} variant="contained">保存</Button>
+        </DialogActions>
+      </Dialog>
+      
       <ReloadPrompt />
+      
+      {ccNotification && (
+          <Snackbar open={!!ccNotification} autoHideDuration={6000} onClose={()=>setCCNotification(null)} anchorOrigin={{vertical:'top', horizontal:'center'}}>
+              <Alert severity="warning" onClose={()=>setCCNotification(null)}>{ccNotification.title}: {ccNotification.msg}</Alert>
+          </Snackbar>
+      )}
     </Container>
   );
 }

@@ -1,274 +1,252 @@
-// src/components/SettingsTab.jsx
 import React, { useState } from 'react';
 import { 
-  Box, Typography, Card, CardContent, Button, TextField, 
-  Dialog, DialogTitle, DialogContent, DialogActions, 
-  FormControl, InputLabel, Select, MenuItem, Divider, 
-  FormControlLabel, Switch, Chip, Grid,
-  List, ListItem, IconButton, ListItemText
+  Box, Typography, Card, CardContent, List, ListItem, ListItemText, ListItemSecondaryAction, 
+  IconButton, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, 
+  FormControl, InputLabel, Select, MenuItem, Checkbox, FormControlLabel, Chip, Divider, Grid 
 } from '@mui/material';
-import { 
-  Add, Work, CalendarMonth, Edit, Delete, Download, Upload, 
-  FileDownload, PersonAdd, ContentCopy, Groups
-} from '@mui/icons-material';
-import { format, addMonths } from 'date-fns';
-import { PREFECTURES } from '../data';
-import { useAuth } from '../AuthContext';
+import { Edit, Delete, Add } from '@mui/icons-material';
+
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
 export default function SettingsTab({ 
   jobs, settings, members, 
-  onAddJob, onUpdateJob, onDeleteJob, onUpdateSettings, 
-  onGenerateRange, onDeleteRange, onUpdateMembers,
-  fullData, onImportData 
+  onAddJob, onUpdateJob, onDeleteJob, 
+  onUpdateSettings, onGenerateRange, onDeleteRange, onUpdateMembers 
 }) {
-  const { isPremium, userProfile, createGroup, kickMember, leaveGroup, isOwner } = useAuth();
-  
   const [openJobDialog, setOpenJobDialog] = useState(false);
-  const [rangeStart, setRangeStart] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [rangeEnd, setRangeEnd] = useState(format(addMonths(new Date(), 1), 'yyyy-MM-dd'));
-  const [targetJobId, setTargetJobId] = useState('');
-  
-  const initialJobState = { 
-    id: null, name: '', type: 'hourly', value: '', color: '#1976d2', 
-    days: [], skipHolidays: false, memberId: members[0]?.id || 'me',
-    cutoffDay: 31, payDay: 25, 
-    payMonth: 1, // 0:当月, 1:翌月, 2:翌々月
-    defaultStart: '09:00', defaultEnd: '17:00', defaultBreakTime: 60
-  };
-  const [editingJob, setEditingJob] = useState(initialJobState);
+  const [editJob, setEditJob] = useState(null);
 
-  const plan = userProfile?.plan;
-  const isSharedPlan = ['couple', 'family'].includes(plan);
-  const maxSlots = plan === 'couple' ? 2 : (plan === 'family' ? 4 : 0);
-  const currentSlots = members.length;
+  const [rangeStart, setRangeStart] = useState('');
+  const [rangeEnd, setRangeEnd] = useState('');
+  const [selectedRangeJob, setSelectedRangeJob] = useState('');
 
-  // --- Handlers ---
-  const handleInvite = async () => {
-    let groupId = userProfile?.groupId;
-    if (!groupId) {
-        if(window.confirm("新しく共有グループを作成しますか？")) groupId = await createGroup(); else return;
-    }
-    const url = `${window.location.origin}/?invite=${groupId}`;
-    navigator.clipboard.writeText(url);
-    alert("招待URLをコピーしました！:\n" + url);
-  };
-
-  const handleExportCSV = () => {
-    if (!isPremium) { alert("CSV出力は有料プラン限定です。"); return; }
-    let csv = "\uFEFF日付,仕事,メンバー,開始,終了,金額,振込予定日\n";
-    const shifts = fullData.shifts || {};
-    Object.keys(shifts).sort().forEach(d => {
-        shifts[d].forEach(s => {
-            const job = (fullData.jobs||[]).find(j => j.id === s.jobId) || { name: s.customName || '不明' };
-            const memberName = (fullData.members||[]).find(m => m.id === job.memberId)?.name || '自分';
-            const payDate = s.customPayDate || '自動計算';
-            csv += `${d},${job.name},${memberName},${s.start||''},${s.end||''},${s.amount},${payDate}\n`;
-        });
+  const handleEditJobOpen = (job) => {
+    setEditJob(job || { 
+      name: '', type: 'hourly', value: 1000, 
+      color: '#2196f3', skipHolidays: true, days: [],
+      defaultStart: '09:00', defaultEnd: '18:00', breakTime: 60,
+      memberId: 'me', // ★担当者の初期値
+      closingDay: 99, // 99=末日
+      payTiming: 'next', 
+      payDay: 25 
     });
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "export.csv";
-    link.click();
+    setOpenJobDialog(true);
   };
 
-  const handleBackupJSON = () => {
-      const blob = new Blob([JSON.stringify(fullData)], { type: 'application/json' });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = "backup.json";
-      link.click();
-  };
-  
-  const handleRestoreJSON = (e) => {
-      const file = e.target.files[0];
-      if(!file) return;
-      const r = new FileReader();
-      r.onload = (ev) => onImportData(JSON.parse(ev.target.result));
-      r.readAsText(file);
-      e.target.value = '';
+  const handleJobSave = () => {
+    if (!editJob.name) return;
+    const jobData = { 
+        ...editJob, 
+        value: parseInt(editJob.value), 
+        breakTime: parseInt(editJob.breakTime) || 0,
+        closingDay: parseInt(editJob.closingDay),
+        payDay: parseInt(editJob.payDay)
+    };
+    if (jobData.id) onUpdateJob(jobData);
+    else onAddJob({ ...jobData, id: Date.now() });
+    setOpenJobDialog(false);
   };
 
-  const handleAddMember = () => { const name = prompt("メンバーの名前"); if(name) { onUpdateMembers([...members, { id: Date.now(), name, color: '#555' }]); } };
-  const handleOpenAdd = () => { setEditingJob({ ...initialJobState, id: Date.now() }); setOpenJobDialog(true); };
-  const handleOpenEdit = (job) => { setEditingJob({ ...initialJobState, ...job, days: job.days || [] }); setOpenJobDialog(true); };
-  
-  const handleSaveJob = () => {
-    if (editingJob.name && editingJob.value) {
-      const val = parseInt(editingJob.value);
-      const jobToSave = { ...editingJob, value: val };
-      if (jobs.some(j => j.id === editingJob.id)) onUpdateJob(jobToSave); else onAddJob(jobToSave);
-      setOpenJobDialog(false);
+  const handleRangeSubmit = () => {
+    if(!rangeStart || !rangeEnd || !selectedRangeJob) {
+        alert("期間と仕事を選択してください");
+        return;
     }
+    onGenerateRange(rangeStart, rangeEnd, selectedRangeJob);
   };
-  const handleLocationChange = (e) => { const p = PREFECTURES.find(p=>p.name===e.target.value); if(p) onUpdateSettings({...settings, location:p}); };
-  const handleDayToggle = (idx) => { const d = editingJob.days || []; setEditingJob({ ...editingJob, days: d.includes(idx) ? d.filter(x=>x!==idx) : [...d, idx].sort() }); };
-  const weekLabels = ['日', '月', '火', '水', '木', '金', '土'];
+  
+  const handleRangeDelete = () => {
+    if(!rangeStart || !rangeEnd || !selectedRangeJob) return;
+    if(window.confirm("本当に削除しますか？")) onDeleteRange(rangeStart, rangeEnd, selectedRangeJob);
+  };
 
   return (
-    <Box>
-      <Card sx={{ mb: 2, bgcolor: '#e3f2fd' }}>
+    <Box sx={{ pb: 4 }}>
+      {/* ★順序変更: 一括登録を上に */}
+      <Typography variant="h6" gutterBottom>📅 シフト一括登録/削除</Typography>
+      <Card sx={{ mb: 4 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom sx={{display:'flex', alignItems:'center'}}><CalendarMonth sx={{mr:1}}/> シフト一括操作</Typography>
-          <Grid container spacing={2} sx={{mb:2}}>
-            <Grid item xs={6}><TextField label="開始日" type="date" fullWidth size="small" InputLabelProps={{shrink:true}} value={rangeStart} onChange={(e)=>setRangeStart(e.target.value)}/></Grid>
-            <Grid item xs={6}><TextField label="終了日" type="date" fullWidth size="small" InputLabelProps={{shrink:true}} value={rangeEnd} onChange={(e)=>setRangeEnd(e.target.value)}/></Grid>
-            <Grid item xs={12}><FormControl fullWidth size="small"><InputLabel>対象の仕事</InputLabel><Select value={targetJobId} label="対象の仕事" onChange={(e)=>setTargetJobId(e.target.value)}>{jobs.map(j => <MenuItem key={j.id} value={j.id}>{j.name}</MenuItem>)}</Select></FormControl></Grid>
-          </Grid>
-          <Box sx={{display:'flex', gap:1}}>
-            <Button fullWidth variant="contained" onClick={() => onGenerateRange(rangeStart, rangeEnd, targetJobId)} disabled={!targetJobId}>登録</Button>
-            <Button fullWidth variant="outlined" color="error" onClick={() => onDeleteRange(rangeStart, rangeEnd, targetJobId)} disabled={!targetJobId}>削除</Button>
-          </Box>
+            <Typography variant="caption" color="textSecondary">
+                指定した期間に、仕事設定の「曜日」に基づいてシフトを一括登録します。
+            </Typography>
+            <Grid container spacing={2} sx={{ mt: 1 }}>
+                <Grid item xs={6}>
+                    <TextField label="開始" type="date" fullWidth InputLabelProps={{shrink:true}} value={rangeStart} onChange={e=>setRangeStart(e.target.value)} autoComplete="off" />
+                </Grid>
+                <Grid item xs={6}>
+                    <TextField label="終了" type="date" fullWidth InputLabelProps={{shrink:true}} value={rangeEnd} onChange={e=>setRangeEnd(e.target.value)} autoComplete="off" />
+                </Grid>
+                <Grid item xs={12}>
+                    <FormControl fullWidth>
+                        <InputLabel>対象の仕事</InputLabel>
+                        <Select value={selectedRangeJob} label="対象の仕事" onChange={e=>setSelectedRangeJob(e.target.value)}>
+                            {jobs.map(j => <MenuItem key={j.id} value={j.id}>{j.name}</MenuItem>)}
+                        </Select>
+                    </FormControl>
+                </Grid>
+                <Grid item xs={6}>
+                    <Button variant="contained" fullWidth onClick={handleRangeSubmit}>一括登録</Button>
+                </Grid>
+                <Grid item xs={6}>
+                    <Button variant="outlined" color="error" fullWidth onClick={handleRangeDelete}>一括削除</Button>
+                </Grid>
+            </Grid>
         </CardContent>
       </Card>
 
-      <Card sx={{ mb: 2 }}>
+      <Typography variant="h6" gutterBottom>⚙️ 仕事の設定</Typography>
+      <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}><Typography variant="h6">仕事設定</Typography><Button startIcon={<Add />} size="small" onClick={handleOpenAdd}>追加</Button></Box>
-          <Divider />
-          <List dense>
+          <List>
             {jobs.map(job => {
-              const owner = members.find(m => m.id === job.memberId)?.name || '不明';
-              return (
-                <ListItem key={job.id} sx={{ display:'flex', alignItems:'center', justifyContent:'space-between', px:0, borderBottom:'1px solid #eee' }}>
-                  <Box sx={{ display:'flex', alignItems:'center', flexGrow: 1, minWidth:0, mr:1 }}>
-                    <Work sx={{ color: job.color, mr: 1, flexShrink:0 }} />
-                    <Box sx={{ minWidth:0 }}>
-                      <Typography variant="subtitle2" noWrap>{job.name}</Typography>
-                      <Typography variant="caption" color="textSecondary" noWrap>
-                        {job.type === 'hourly' ? `時給 ¥${job.value}` : '固定/手動'}
-                      </Typography>
-                    </Box>
-                  </Box>
-                  <Box sx={{ display:'flex', alignItems:'center', flexShrink: 0 }}>
-                    <Chip label={owner} size="small" variant="outlined" sx={{ mr:1, maxWidth:80 }} />
-                    <IconButton size="small" onClick={() => handleOpenEdit(job)}><Edit fontSize="small"/></IconButton>
-                    <IconButton size="small" color="error" onClick={() => onDeleteJob(job.id)}><Delete fontSize="small"/></IconButton>
-                  </Box>
-                </ListItem>
-              );
+                // 担当者名を取得
+                const ownerName = members.find(m => m.id === job.memberId)?.name || '自分';
+                return (
+                  <React.Fragment key={job.id}>
+                    <ListItem>
+                      <ListItemText 
+                        primary={
+                            <Box sx={{display:'flex', alignItems:'center', gap:1}}>
+                                <Box sx={{width:12, height:12, borderRadius:'50%', bgcolor:job.color}}/>
+                                <Typography fontWeight="bold">{job.name}</Typography>
+                                <Chip label={ownerName} size="small" variant="outlined" sx={{height:20, fontSize:'0.6rem'}} />
+                            </Box>
+                        }
+                        secondary={
+                            <>
+                                {`${job.type==='hourly'?'時給':'日給'}: ¥${job.value} / 休憩: ${job.breakTime||0}分`}
+                                <br/>
+                                {`締め: ${job.closingDay===99?'月末':job.closingDay+'日'} / 払い: ${job.payTiming==='current'?'当月':job.payTiming==='next'?'翌月':'翌々月'}${job.payDay===99?'末日':job.payDay+'日'}`}
+                            </>
+                        } 
+                      />
+                      <ListItemSecondaryAction>
+                        <IconButton onClick={() => handleEditJobOpen(job)}><Edit /></IconButton>
+                        <IconButton onClick={() => onDeleteJob(job.id)}><Delete /></IconButton>
+                      </ListItemSecondaryAction>
+                    </ListItem>
+                    <Divider />
+                  </React.Fragment>
+                );
             })}
           </List>
+          <Button startIcon={<Add />} fullWidth variant="outlined" onClick={() => handleEditJobOpen(null)}>
+            新しい仕事を追加
+          </Button>
         </CardContent>
       </Card>
 
-      {/* アプリ設定・データ管理・共有設定は変更なしのため省略せず記述 */}
-      <Card sx={{ mb: 2 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>⚙ アプリ設定</Typography>
-          <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel>給与計算のタイミング</InputLabel>
-            <Select value={settings.calcMode || 'realtime'} label="給与計算のタイミング" onChange={(e) => onUpdateSettings({ ...settings, calcMode: e.target.value })}><MenuItem value="realtime">⏱ リアルタイム</MenuItem><MenuItem value="completed">✅ 完了ベース</MenuItem><MenuItem value="upfront">☀️ 見込み込み</MenuItem></Select>
-          </FormControl>
-          <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel>地域</InputLabel>
-            <Select value={settings.location?.name || '東京'} label="地域" onChange={(e) => { const p = PREFECTURES.find(x=>x.name===e.target.value); if(p) onUpdateSettings({...settings, location:p}); }}>{PREFECTURES.map(p => <MenuItem key={p.name} value={p.name}>{p.name}</MenuItem>)}</Select>
-          </FormControl>
-          <TextField label="扶養リミット" fullWidth type="number" size="small" value={settings.targetLimit} onChange={(e) => onUpdateSettings({ ...settings, targetLimit: parseInt(e.target.value) })} />
-        </CardContent>
-      </Card>
-
-      <Card sx={{ mb: 2 }}>
-        <CardContent>
-            <Typography variant="h6" gutterBottom>💾 データ管理</Typography>
-            <Box sx={{display:'flex', gap:1, mb:1}}>
-                <Button startIcon={<Download />} variant="outlined" fullWidth onClick={handleBackupJSON}>バックアップ</Button>
-                <Button startIcon={<Upload />} variant="outlined" component="label" fullWidth>復元<input type="file" hidden accept=".json" onChange={handleRestoreJSON} /></Button>
-            </Box>
-            <Button startIcon={<FileDownload />} variant="outlined" fullWidth onClick={handleExportCSV} disabled={!isPremium}>CSVエクスポート {isPremium ? '' : '(有料プラン限定)'}</Button>
-        </CardContent>
-      </Card>
-
-      {isSharedPlan && (
-      <Card sx={{ mb: 2, border: '1px solid #1976d2' }}>
-        <CardContent>
-          <Box sx={{display:'flex', justifyContent:'space-between', alignItems:'center', mb:1}}>
-              <Typography variant="h6" color="primary">👨‍👩‍👧 グループ共有</Typography>
-              <Chip icon={<Groups sx={{color:'white !important'}}/>} label={`参加枠: ${currentSlots}/${maxSlots}`} color="primary" size="small" />
-          </Box>
-          {userProfile?.groupId ? (
-              <Box>
-                  <Button startIcon={<ContentCopy />} fullWidth variant="contained" onClick={handleInvite} sx={{mb:2}}>招待URLをコピー</Button>
-                  {isOwner && (<Button size="small" color="error" fullWidth onClick={() => { const id = prompt("削除するUID"); if(id) kickMember(id); }}>ID指定で強制退会</Button>)}
-                  <Button color="inherit" fullWidth onClick={leaveGroup} sx={{mt:1}}>グループを抜ける</Button>
-              </Box>
-          ) : (
-              <Button startIcon={<PersonAdd />} fullWidth variant="contained" onClick={handleInvite}>グループを作成して招待</Button>
-          )}
-        </CardContent>
-      </Card>
-      )}
-
-      {/* --- ダイアログ: 締め日・給料日設定を復活 --- */}
-      <Dialog open={openJobDialog} onClose={() => setOpenJobDialog(false)}>
-        <DialogTitle>{editingJob.id ? '編集' : '追加'}</DialogTitle>
-        <DialogContent>
-          <TextField label="仕事名" fullWidth margin="dense" value={editingJob.name} onChange={(e) => setEditingJob({ ...editingJob, name: e.target.value })} />
-          <FormControl fullWidth margin="dense">
-            <InputLabel>誰の仕事？</InputLabel>
-            <Select value={editingJob.memberId || ''} label="誰の仕事？" onChange={(e)=>setEditingJob({...editingJob, memberId:e.target.value})}>
-               {members.map(m=><MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>)}
+      <Dialog open={openJobDialog} onClose={() => setOpenJobDialog(false)} fullWidth maxWidth="xs">
+        <DialogTitle>{editJob?.id ? '仕事を編集' : '新規作成'}</DialogTitle>
+        <DialogContent sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          
+          <TextField label="仕事名" fullWidth value={editJob?.name || ''} onChange={(e) => setEditJob({ ...editJob, name: e.target.value })} autoComplete="off" />
+          
+          {/* ★追加: 担当者選択 */}
+          <FormControl fullWidth>
+            <InputLabel>担当者</InputLabel>
+            <Select value={editJob?.memberId || 'me'} label="担当者" onChange={(e) => setEditJob({ ...editJob, memberId: e.target.value })}>
+                {members.map(m => (
+                    <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>
+                ))}
             </Select>
           </FormControl>
 
-          <Box sx={{ display: 'flex', gap: 2, mt:1 }}>
+          <Box sx={{ display: 'flex', gap: 2 }}>
             <FormControl fullWidth>
-                <InputLabel>タイプ</InputLabel>
-                <Select value={editingJob.type} label="タイプ" onChange={(e) => setEditingJob({ ...editingJob, type: e.target.value })}>
-                <MenuItem value="hourly">⏳ 時給制</MenuItem>
-                <MenuItem value="monthly">👔 月給制</MenuItem>
-                <MenuItem value="manual">💪 完全歩合</MenuItem>
+              <InputLabel>給与タイプ</InputLabel>
+              <Select value={editJob?.type || 'hourly'} label="給与タイプ" onChange={(e) => setEditJob({ ...editJob, type: e.target.value })}>
+                <MenuItem value="hourly">時給</MenuItem>
+                <MenuItem value="fixed">日給</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField label="金額" type="number" fullWidth value={editJob?.value || ''} onChange={(e) => setEditJob({ ...editJob, value: e.target.value })} autoComplete="off" />
+          </Box>
+
+          <Divider sx={{my:1}}><Chip label="給与規定" size="small" /></Divider>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <FormControl fullWidth>
+                <InputLabel>締め日</InputLabel>
+                <Select value={editJob?.closingDay || 99} label="締め日" onChange={(e) => setEditJob({ ...editJob, closingDay: e.target.value })}>
+                    <MenuItem value={99}>末日</MenuItem>
+                    <MenuItem value={15}>15日</MenuItem>
+                    <MenuItem value={20}>20日</MenuItem>
+                    <MenuItem value={25}>25日</MenuItem>
+                    <MenuItem value={10}>10日</MenuItem>
                 </Select>
             </FormControl>
-            <TextField label="金額" type="number" fullWidth value={editingJob.value} onChange={(e) => setEditingJob({ ...editingJob, value: e.target.value })} />
+            <FormControl fullWidth>
+                <InputLabel>支払月</InputLabel>
+                <Select value={editJob?.payTiming || 'next'} label="支払月" onChange={(e) => setEditJob({ ...editJob, payTiming: e.target.value })}>
+                    <MenuItem value="current">当月</MenuItem>
+                    <MenuItem value="next">翌月</MenuItem>
+                    <MenuItem value="after_next">翌々月</MenuItem>
+                </Select>
+            </FormControl>
+            <FormControl fullWidth>
+                <InputLabel>支払日</InputLabel>
+                <Select value={editJob?.payDay || 25} label="支払日" onChange={(e) => setEditJob({ ...editJob, payDay: e.target.value })}>
+                    <MenuItem value={25}>25日</MenuItem>
+                    <MenuItem value={99}>末日</MenuItem> {/* ★修正: 末日(99) */}
+                    <MenuItem value={15}>15日</MenuItem>
+                    <MenuItem value={10}>10日</MenuItem>
+                    <MenuItem value={1}>1日</MenuItem>
+                </Select>
+            </FormControl>
+          </Box>
+
+          <Divider sx={{my:1}}><Chip label="勤怠デフォルト" size="small" /></Divider>
+
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <TextField label="開始" type="time" fullWidth InputLabelProps={{ shrink: true }} value={editJob?.defaultStart || ''} onChange={(e) => setEditJob({ ...editJob, defaultStart: e.target.value })} autoComplete="off" />
+            <TextField label="終了" type="time" fullWidth InputLabelProps={{ shrink: true }} value={editJob?.defaultEnd || ''} onChange={(e) => setEditJob({ ...editJob, defaultEnd: e.target.value })} autoComplete="off" />
+          </Box>
+
+          <TextField 
+            label="休憩 (分)" 
+            type="number" 
+            fullWidth 
+            value={editJob?.breakTime !== undefined ? editJob.breakTime : 60} 
+            onChange={(e) => setEditJob({ ...editJob, breakTime: e.target.value })} 
+            helperText="シフト自動生成時や初期値として使われます"
+            autoComplete="off" 
+          />
+
+          <Box>
+            <Typography variant="caption">出勤曜日 (一括登録で使用)</Typography>
+            <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
+              {WEEKDAYS.map((day, i) => (
+                <Chip 
+                  key={day} 
+                  label={day} 
+                  color={editJob?.days?.includes(i) ? 'primary' : 'default'} 
+                  onClick={() => {
+                    const newDays = editJob?.days?.includes(i) 
+                      ? editJob.days.filter(d => d !== i) 
+                      : [...(editJob?.days || []), i];
+                    setEditJob({ ...editJob, days: newDays });
+                  }}
+                  clickable
+                />
+              ))}
+            </Box>
           </Box>
           
-          <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>{['#1976d2', '#ed6c02', '#2e7d32', '#9c27b0', '#d32f2f'].map(c => (<Box key={c} onClick={() => setEditingJob({ ...editingJob, color: c })} sx={{ width: 30, height: 30, borderRadius: '50%', bgcolor: c, cursor: 'pointer', border: editingJob.color === c ? '2px solid black' : 'none' }} />))}</Box>
+          <FormControlLabel 
+            control={<Checkbox checked={editJob?.skipHolidays || false} onChange={(e) => setEditJob({ ...editJob, skipHolidays: e.target.checked })} />} 
+            label="祝日は休みにする" 
+          />
           
-          {/* ★復活: 締め日・給料日の設定 */}
-          <Typography variant="subtitle2" sx={{mt:2}}>給与設定</Typography>
-          <Grid container spacing={2} sx={{mb: 2}}>
-             <Grid item xs={4}>
-               <FormControl fullWidth size="small">
-                 <InputLabel>締め日</InputLabel>
-                 <Select value={editingJob.cutoffDay || 31} label="締め日" onChange={(e)=>setEditingJob({...editingJob, cutoffDay: e.target.value})}>
-                   <MenuItem value={31}>末日</MenuItem>
-                   {[...Array(28).keys()].map(i => <MenuItem key={i+1} value={i+1}>{i+1}日</MenuItem>)}
-                 </Select>
-               </FormControl>
-             </Grid>
-             <Grid item xs={4}>
-               <FormControl fullWidth size="small">
-                 <InputLabel>支払い</InputLabel>
-                 <Select value={editingJob.payMonth !== undefined ? editingJob.payMonth : 1} label="支払い" onChange={(e)=>setEditingJob({...editingJob, payMonth: e.target.value})}>
-                   <MenuItem value={0}>当月</MenuItem>
-                   <MenuItem value={1}>翌月</MenuItem>
-                   <MenuItem value={2}>翌々月</MenuItem>
-                 </Select>
-               </FormControl>
-             </Grid>
-             <Grid item xs={4}>
-               <FormControl fullWidth size="small">
-                 <InputLabel>給料日</InputLabel>
-                 <Select value={editingJob.payDay || 25} label="給料日" onChange={(e)=>setEditingJob({...editingJob, payDay: e.target.value})}>
-                   {[...Array(28).keys()].map(i => <MenuItem key={i+1} value={i+1}>{i+1}日</MenuItem>)}
-                   <MenuItem value={31}>末日</MenuItem>
-                 </Select>
-               </FormControl>
-             </Grid>
-          </Grid>
+          <Box sx={{ mt: 1 }}>
+             <Typography variant="caption">カレンダー表示色</Typography>
+             <input type="color" value={editJob?.color || '#2196f3'} onChange={(e)=>setEditJob({...editJob, color:e.target.value})} style={{width:'100%', height:40, border:'none'}} />
+          </Box>
 
-          <Typography variant="subtitle2" sx={{mt:1}}>詳細設定</Typography>
-          <Grid container spacing={2} sx={{mb:2}}>
-             <Grid item xs={6}><TextField label="開始" type="time" size="small" fullWidth InputLabelProps={{shrink:true}} value={editingJob.defaultStart} onChange={(e)=>setEditingJob({...editingJob, defaultStart:e.target.value})} /></Grid>
-             <Grid item xs={6}><TextField label="終了" type="time" size="small" fullWidth InputLabelProps={{shrink:true}} value={editingJob.defaultEnd} onChange={(e)=>setEditingJob({...editingJob, defaultEnd:e.target.value})} /></Grid>
-             <Grid item xs={6}><TextField label="休憩(分)" type="number" size="small" fullWidth value={editingJob.defaultBreakTime} onChange={(e)=>setEditingJob({...editingJob, defaultBreakTime:e.target.value})} /></Grid>
-          </Grid>
-          <Typography variant="subtitle2">曜日固定</Typography>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>{weekLabels.map((day, idx) => (<Box key={idx} onClick={() => handleDayToggle(idx)} sx={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', bgcolor: editingJob.days?.includes(idx) ? editingJob.color : '#eee', color: editingJob.days?.includes(idx) ? 'white' : 'black', fontWeight: 'bold', fontSize: 12 }}>{day}</Box>))}</Box>
-          <FormControlLabel control={<Switch checked={editingJob.skipHolidays} onChange={(e) => setEditingJob({...editingJob, skipHolidays: e.target.checked})} />} label="祝日休み" />
         </DialogContent>
-        <DialogActions><Button onClick={() => setOpenJobDialog(false)}>キャンセル</Button><Button onClick={handleSaveJob} variant="contained">保存</Button></DialogActions>
+        <DialogActions>
+          <Button onClick={() => setOpenJobDialog(false)}>キャンセル</Button>
+          <Button onClick={handleJobSave} variant="contained">保存</Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

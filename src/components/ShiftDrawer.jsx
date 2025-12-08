@@ -4,13 +4,13 @@ import {
   Drawer, List, ListItem, ListItemIcon, ListItemText, Typography, 
   Box, Divider, TextField, Button, Tabs, Tab, FormControlLabel, Switch 
 } from '@mui/material';
-import { Work, AddCircle, Edit, AccessTime, CalendarToday } from '@mui/icons-material';
+import { Work, AddCircle, CalendarToday } from '@mui/icons-material';
 import { format } from 'date-fns';
 
 export default function ShiftDrawer({ open, onClose, jobs, members, selectedDate, onAddShift }) {
   const [tabIndex, setTabIndex] = useState(0); // 0:選択, 1:単発
   
-  // 共通: 振込日
+  // 共通: 振込日 (単発用)
   const [customPayDate, setCustomPayDate] = useState('');
 
   // 単発用State
@@ -18,11 +18,10 @@ export default function ShiftDrawer({ open, onClose, jobs, members, selectedDate
   const [customAmount, setCustomAmount] = useState('');
   const [customStart, setCustomStart] = useState('09:00');
   const [customEnd, setCustomEnd] = useState('17:00');
-  const [hasTime, setHasTime] = useState(true); // 時間指定ありなし
+  const [hasTime, setHasTime] = useState(true);
 
   const dateStr = selectedDate ? format(selectedDate, 'M月d日') : '';
 
-  // 開くたびにリセット
   useEffect(() => {
     if (open) {
       setTabIndex(0);
@@ -37,8 +36,8 @@ export default function ShiftDrawer({ open, onClose, jobs, members, selectedDate
 
   // 既存ジョブ選択時
   const handleSelectJob = (job) => {
-    // 振込日(customPayDate)のみ渡す。金額はJob設定依存
-    onAddShift(job, 0, customPayDate);
+    // いつもの仕事は設定依存なので振込日は空で渡す
+    onAddShift(job, 0, ''); 
     onClose();
   };
 
@@ -51,7 +50,6 @@ export default function ShiftDrawer({ open, onClose, jobs, members, selectedDate
     const customJob = { id: 'custom', name: customName, type: 'manual' };
     const amount = parseInt(customAmount) || 0;
     
-    // 時間指定がない場合は start/end を空にする
     const start = hasTime ? customStart : '';
     const end = hasTime ? customEnd : '';
 
@@ -78,22 +76,6 @@ export default function ShiftDrawer({ open, onClose, jobs, members, selectedDate
       {/* タブ0: 既存リスト選択 */}
       {tabIndex === 0 && (
         <Box>
-          {/* 振込日指定 (オプション) */}
-          <Box sx={{ px: 2, py: 1, bgcolor: '#f9f9f9', display: 'flex', alignItems: 'center', gap: 1 }}>
-            <CalendarToday fontSize="small" color="action" />
-            <TextField 
-              label="振込予定日 (任意)" 
-              type="date" 
-              size="small" 
-              fullWidth 
-              InputLabelProps={{ shrink: true }}
-              value={customPayDate} 
-              onChange={(e) => setCustomPayDate(e.target.value)} 
-              sx={{ bgcolor: 'white' }}
-            />
-          </Box>
-          <Divider />
-
           <List sx={{ maxHeight: '50vh', overflowY: 'auto' }}>
             {jobs.map(job => {
               const owner = members.find(m => m.id === job.memberId)?.name || '自分';
@@ -168,6 +150,7 @@ export default function ShiftDrawer({ open, onClose, jobs, members, selectedDate
             value={customPayDate} 
             onChange={(e) => setCustomPayDate(e.target.value)} 
             sx={{ mb: 3 }}
+            helperText="未入力の場合は当月扱いになります"
           />
 
           <Button 
