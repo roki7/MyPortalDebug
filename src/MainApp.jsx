@@ -1,9 +1,10 @@
+// src/MainApp.jsx
 import React, { useState, useEffect } from 'react';
 import { 
   Box, Container, Paper, Typography, Tabs, Tab, LinearProgress, Chip, IconButton, 
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Avatar, Fab,
   Drawer, List, ListItem, ListItemIcon, ListItemText, Divider, 
-  Snackbar, Alert, TextField
+  Snackbar, Alert, TextField, Switch, FormControlLabel
 } from '@mui/material';
 import { 
   CalendarMonth, AccountBalance, Settings, EmojiEvents, ArrowBack, ArrowForward, 
@@ -45,6 +46,9 @@ export default function MainApp() {
   const [openDrawer, setOpenDrawer] = useState(false);
   const [viewMode, setViewMode] = useState('personal'); 
 
+  // ★追加: 世帯合算表示スイッチ
+  const [isHousehold, setIsHousehold] = useState(false);
+
   const [settings, setSettings] = useState(INITIAL_SETTINGS);
   const [members, setMembers] = useState(INITIAL_MEMBERS);
   const [jobs, setJobs] = useState(INITIAL_JOBS);
@@ -60,7 +64,9 @@ export default function MainApp() {
   const [sharedDocs, setSharedDocs] = useState([]);
   const [kickDialog, setKickDialog] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [earnings, setEarnings] = useState({ fixed: 0, projected: 0, workDays: 0 });
+  
+  // earnings の構造が変わりますが、受け取り側で対応
+  const [earnings, setEarnings] = useState({ personalFixed: 0, personalProjected: 0, householdFixed: 0, householdProjected: 0, workDays: 0 });
   const [annualIncome, setAnnualIncome] = useState(0);
   const [annualSummary, setAnnualSummary] = useState([]);
   const [weatherData, setWeatherData] = useState({});
@@ -120,7 +126,15 @@ export default function MainApp() {
 
   useEffect(() => { if(!settings?.location) return; const loc=settings.location; const url=`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&daily=weathercode,surface_pressure_mean&timezone=Asia%2FTokyo`; fetch(url).then(r=>r.json()).then(d=>{if(d.daily){const w={};d.daily.time.forEach((t,i)=>{w[t]={code:d.daily.weathercode[i],pressure:d.daily.surface_pressure_mean[i]}});setWeatherData(w);}}).catch(()=>{});}, [settings.location]);
   useEffect(() => { const todayDay = new Date().getDate(); const creditCards = accounts.filter(a => a.type === 'credit'); creditCards.forEach(card => { const checkDay = card.confirmationDay || card.billingDay; if (checkDay === todayDay) { const unsettledAmount = payments.filter(p => p.accountId === card.id && !p.isSettled).reduce((sum, p) => sum + p.amount, 0); if (unsettledAmount > 0) { setCCNotification({ title: `${card.name}の請求確定日`, msg: `未確定額: ¥${unsettledAmount.toLocaleString()}`}); }}});}, [accounts, payments, isLoaded]);
-  useEffect(() => { const r = calculateMonthlyEarnings(displayShifts, jobs, currentDate, settings.calcMode); setEarnings(r); const ann = calculateAnnualIncome(displayShifts, jobs, currentDate); setAnnualIncome(ann); const summary = getAnnualSummary(displayShifts, jobs, currentDate, settings.calcMode); setAnnualSummary(summary);}, [displayShifts, jobs, currentDate, settings]);
+  
+  useEffect(() => { 
+      const r = calculateMonthlyEarnings(displayShifts, jobs, currentDate); 
+      setEarnings(r); 
+      const ann = calculateAnnualIncome(displayShifts, jobs, currentDate); 
+      setAnnualIncome(ann); 
+      const summary = getAnnualSummary(displayShifts, jobs, currentDate); 
+      setAnnualSummary(summary);
+  }, [displayShifts, jobs, currentDate, settings]);
 
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
@@ -158,22 +172,31 @@ export default function MainApp() {
   
   const handleDeleteRange = (start, end, jobId) => { setShifts(deleteShiftsRange(shifts, start, end, parseInt(jobId))); alert("削除"); };
   
-  const handleAddShift = (job, manualAmount = 0) => { 
+  // ★修正: 引数を増やして振込日などを受け取る
+  const handleAddShift = (job, manualAmount = 0, customPayDate = '', start = '', end = '') => { 
       if (!selectedDate) return; 
       const dateStr = format(selectedDate, 'yyyy-MM-dd'); 
-      // 新規登録時もJobから休憩時間を引っ張る
+      
       let newShift = { 
           id: Date.now(), 
           jobId: job.id, 
           status: 'normal', 
           amount: manualAmount, 
-          start: job.defaultStart || '09:00', 
-          end: job.defaultEnd || '17:00', 
-          breakTime: job.breakTime || 0, // ★ここでJobの値をセット
-          isShared: viewMode === 'shared' 
+          // 引数で時間が渡ってきたらそれを優先
+          start: start || job.defaultStart || '09:00', 
+          end: end || job.defaultEnd || '17:00', 
+          breakTime: job.breakTime || 0, 
+          isShared: viewMode === 'shared',
+          customPayDate: customPayDate // ★重要：振込日を保存
       }; 
-      if (job.id === 'custom') { newShift.customName = job.name; newShift.start = ''; newShift.end = ''; } 
-      else if (job.type === 'manual' && !manualAmount) { const amt = prompt("金額", "0"); if(amt) newShift.amount = parseInt(amt); } 
+
+      if (job.id === 'custom') { 
+          newShift.customName = job.name;
+          // 手入力(custom)の場合もstart/endがあればそれを使う
+      } else if (job.type === 'manual' && !manualAmount) { 
+          const amt = prompt("金額", "0"); 
+          if(amt) newShift.amount = parseInt(amt); 
+      } 
       
       const current = shifts[dateStr] || []; 
       setShifts({ ...shifts, [dateStr]: [...current, newShift] }); 
@@ -199,6 +222,10 @@ export default function MainApp() {
   const mainTabs = [{ icon: <CalendarMonth />, label: 'シフト' }, { icon: <AccountBalance />, label: '口座' }, { icon: <ShoppingCart />, label: '買い物' }, { icon: <Apps />, label: 'MyLinks' }];
   const moreTabs = [{ icon: <Assessment />, label: '分析', index: 4 }, { icon: <EmojiEvents />, label: 'モチベ', index: 5 }, { icon: <Settings />, label: '設定', index: 6 }];
 
+  // ★表示用の値を決定（スイッチの状態による）
+  const currentFixed = isHousehold ? earnings.householdFixed : earnings.personalFixed;
+  const currentProjected = isHousehold ? earnings.householdProjected : earnings.personalProjected;
+
   return (
     <Container maxWidth="sm" sx={{ p: 0, bgcolor: '#f5f5f5', minHeight: '100vh', pb: 10, position: 'relative' }}>
       <Dialog open={kickDialog}><DialogTitle>通知</DialogTitle><DialogContent>グループから削除されました。</DialogContent><DialogActions><Button onClick={handleKickConfirm}>OK</Button></DialogActions></Dialog>
@@ -219,15 +246,40 @@ export default function MainApp() {
              <IconButton onClick={handleNextMonth} size="small" sx={{ ml: -0.5 }}><ArrowForward sx={{ color: 'white' }} /></IconButton>
            </Box>
         </Box>
+
+        {/* ★追加: 表示切り替えスイッチ */}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+            <FormControlLabel
+                control={
+                    <Switch 
+                        checked={isHousehold} 
+                        onChange={(e) => setIsHousehold(e.target.checked)} 
+                        size="small" 
+                        color="warning" 
+                    />
+                }
+                label={<Typography variant="caption" sx={{color:'white'}}>世帯合算</Typography>}
+                sx={{ mr: 0 }}
+            />
+        </Box>
+
         <Box sx={{ display: 'flex', gap: 2, mb: 1 }}>
             <Typography variant="caption">📅 出勤: {earnings.workDays}日</Typography>
             <Typography variant="caption">💰 世帯年収: ¥{annualIncome.toLocaleString()}</Typography>
         </Box>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-          <Box><Typography variant="caption" sx={{ opacity: 0.7 }}>💰 今月の確定 (振り込みベース)</Typography><Typography variant="h4" fontWeight="bold">¥{earnings.fixed.toLocaleString()}</Typography></Box>
-          <Box sx={{ textAlign: 'right' }}><Typography variant="caption" sx={{ opacity: 0.7 }}>着地見込み</Typography><Typography variant="h6">¥{earnings.projected.toLocaleString()}</Typography></Box>
+          <Box>
+            <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                {isHousehold ? "🏠 世帯" : "👤 自分"}の確定 (振込ベース)
+            </Typography>
+            <Typography variant="h4" fontWeight="bold">¥{currentFixed?.toLocaleString() || 0}</Typography>
+          </Box>
+          <Box sx={{ textAlign: 'right' }}>
+            <Typography variant="caption" sx={{ opacity: 0.7 }}>着地見込み</Typography>
+            <Typography variant="h6">¥{currentProjected?.toLocaleString() || 0}</Typography>
+          </Box>
         </Box>
-        <LinearProgress variant="determinate" value={earnings.projected > 0 ? (earnings.fixed / earnings.projected) * 100 : 0} sx={{ mt: 1, height: 6, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.1)', '& .MuiLinearProgress-bar': { bgcolor: '#00e676' } }} />
+        <LinearProgress variant="determinate" value={currentProjected > 0 ? (currentFixed / currentProjected) * 100 : 0} sx={{ mt: 1, height: 6, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.1)', '& .MuiLinearProgress-bar': { bgcolor: '#00e676' } }} />
       </Paper>
 
       <Box sx={{ p: 2 }}>
@@ -238,17 +290,13 @@ export default function MainApp() {
                 jobs={jobs} 
                 weatherData={weatherData} 
                 onDateClick={(d) => { setSelectedDate(d); setOpenMenu(true); }} 
-                // ★修正: 休憩時間の初期値セット（強力版）
                 onShiftClick={(s, d) => { 
                     setSelectedDate(d); 
                     const job = jobs.find(j => String(j.id) === String(s.jobId));
                     let initBreak = s.breakTime;
-                    
-                    // 値がundefined、null、あるいは空文字の場合はJobから引っ張る
                     if (initBreak === undefined || initBreak === null || initBreak === '') {
                         initBreak = job?.breakTime || 0;
                     }
-                    
                     setEditShift({ ...s, breakTime: initBreak });
                 }} 
                 onPrevMonth={handlePrevMonth} 
@@ -273,7 +321,8 @@ export default function MainApp() {
         {tabIndex === 2 && <ShoppingTab shopping={shopping} onUpdateShopping={setShopping} onUpdateStock={handleUpdateStock} onAddPayment={handleAddPayment} accounts={accounts} />}
         {tabIndex === 3 && <MyLinksTab myLinks={myLinks} linkCategories={linkCategories} onAddMyLink={handleAddMyLink} onUpdateMyLink={handleUpdateMyLink} onDeleteMyLink={handleDeleteMyLink} onAddCategory={handleAddCategory} onDeleteCategory={handleDeleteCategory} onEditCategory={handleEditCategory} />}
         {tabIndex === 4 && <ReportTab annualIncome={annualIncome} summary={annualSummary} targetLimit={settings.targetLimit} accounts={accounts} totalFixedCost={totalFixedCost} />}
-        {tabIndex === 5 && <MotivationTab currentEarnings={earnings.fixed} fixedCost={totalFixedCost} />}
+        {/* モチベーションタブは自分の確定額を表示するように設定 */}
+        {tabIndex === 5 && <MotivationTab currentEarnings={earnings.personalFixed} fixedCost={totalFixedCost} />}
         {tabIndex === 6 && <SettingsTab jobs={jobs} settings={settings} members={members} onAddJob={handleAddJob} onUpdateJob={handleUpdateJob} onDeleteJob={handleDeleteJob} onUpdateSettings={setSettings} onGenerateAnnualShifts={handleGenerateAnnualShifts} onGenerateRange={handleGenerateRange} onDeleteRange={handleDeleteRange} onUpdateMembers={setMembers} fullData={{ settings, members, jobs, shifts, accounts, recurring, payments, templates, shopping, myLinks, linkCategories }} onImportData={handleFullImport} />}
       </Box>
 

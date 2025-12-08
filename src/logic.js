@@ -1,3 +1,4 @@
+// src/logic.js
 import { format, eachDayOfInterval, startOfYear, endOfYear, getDay, addMonths, setDate, isSameMonth, endOfMonth } from 'date-fns';
 import { isHoliday } from 'holiday-jp';
 
@@ -17,8 +18,6 @@ const getPayDateForShift = (shiftDate, job, customPayDate) => {
 
     // 締め日判定
     let baseDate = new Date(workDate);
-    // 締め日が末日(99)の場合は、常に「その月」が基準。
-    // 日付指定(ex:15日)で、かつ働いた日がそれより後なら翌月基準。
     if (closingDay !== 99 && workDate.getDate() > closingDay) {
         baseDate = addMonths(baseDate, 1);
     }
@@ -30,69 +29,91 @@ const getPayDateForShift = (shiftDate, job, customPayDate) => {
 
     // 支払日の設定
     if (payDay === 99) {
-        // 末日払いの場合
         targetDate = endOfMonth(targetDate);
     } else {
-        // 日付指定の場合（存在しない日付の自動繰越はDateオブジェクトがやるが、念のため）
         targetDate.setDate(payDay);
     }
 
     return targetDate;
 };
 
-// 給与計算 (振り込み日ベース ＆ 出勤日数は自分のみ)
+// ★修正版: 給与計算 & 出勤日数計算
 export const calculateMonthlyEarnings = (shifts, jobs, currentDate) => {
-  let fixed = 0;
-  let projected = 0;
+  // 給与集計用（自分用 / 世帯用）
+  let personalFixed = 0;
+  let personalProjected = 0;
+  let householdFixed = 0;
+  let householdProjected = 0;
   
-  // ★出勤日数は「自分のシフト」かつ「ユニークな日付」でカウント
+  // 出勤日数カウント用（自分のみ、シフト日ベース）
   const myWorkDates = new Set();
 
   Object.keys(shifts).forEach(dateStr => {
+      const shiftDate = new Date(dateStr);
       const dayShifts = shifts[dateStr];
+      
       dayShifts.forEach(shift => {
-          // 欠勤は計算対象外
+          // 欠勤はすべて無視
           if (shift.status === 'absence') return;
 
           const job = jobs.find(j => String(j.id) === String(shift.jobId));
-          
-          // ★自分のシフトなら日付を記録（1日1回カウント用）
-          // jobがない(手入力)場合や、job.memberIdが'me'の場合
-          if (!job || job.memberId === 'me') {
+          // 「自分のシフト」判定: 手入力(jobなし) or memberIdがない or memberIdが'me'
+          const isMyShift = !job || !job.memberId || job.memberId === 'me';
+
+          // --- 1. 出勤日数の計算 (シフト日ベース) ---
+          // 表示中の月と「働いた日」が同じならカウント
+          if (isSameMonth(shiftDate, currentDate) && isMyShift) {
               myWorkDates.add(dateStr);
           }
 
-          // --- 金額計算（こちらは世帯全員分を合算）---
-          
-          // 支払日を計算
+          // --- 2. 給与の計算 (振込日ベース) ---
           const payDate = getPayDateForShift(dateStr, job, shift.customPayDate);
 
-          // 支払日が「表示中の月」か？
-          if (!isSameMonth(payDate, currentDate)) return;
+          // 表示中の月と「給料日」が同じなら金額計算
+          if (isSameMonth(payDate, currentDate)) {
+              let amount = 0;
+              
+              if (shift.amount) {
+                  // 手入力金額
+                  amount = parseInt(shift.amount);
+              } else if (job) {
+                  // 仕事設定から計算
+                  if (job.type === 'fixed') {
+                      amount = parseInt(job.value);
+                  } else if (job.type === 'hourly' && shift.start && shift.end) {
+                      const s = new Date(`1970-01-01T${shift.start}`);
+                      const e = new Date(`1970-01-01T${shift.end}`);
+                      // 休憩時間の取得
+                      const breakTime = shift.breakTime !== undefined 
+                          ? parseInt(shift.breakTime) 
+                          : (parseInt(job.breakTime) || 0);
+                      
+                      let minutes = (e - s) / (1000 * 60) - breakTime;
+                      if (minutes < 0) minutes = 0;
+                      amount = Math.floor((minutes / 60) * parseInt(job.value));
+                  }
+              }
 
-          let amount = 0;
-          if (shift.amount) {
-              amount = parseInt(shift.amount);
-          } else if (job) {
-              if (job.type === 'fixed') {
-                  amount = parseInt(job.value);
-              } else if (job.type === 'hourly' && shift.start && shift.end) {
-                  const s = new Date(`1970-01-01T${shift.start}`);
-                  const e = new Date(`1970-01-01T${shift.end}`);
-                  const breakTime = shift.breakTime !== undefined ? parseInt(shift.breakTime) : (parseInt(job.breakTime) || 0);
-                  
-                  let minutes = (e - s) / (1000 * 60) - breakTime;
-                  if (minutes < 0) minutes = 0;
-                  amount = Math.floor((minutes / 60) * parseInt(job.value));
+              // 世帯計に加算
+              if (payDate <= new Date()) householdFixed += amount;
+              householdProjected += amount;
+
+              // 自分計に加算
+              if (isMyShift) {
+                  if (payDate <= new Date()) personalFixed += amount;
+                  personalProjected += amount;
               }
           }
-
-          if (payDate <= new Date()) fixed += amount;
-          projected += amount;
       });
   });
 
-  return { fixed, projected, workDays: myWorkDates.size };
+  return { 
+      personalFixed, 
+      personalProjected, 
+      householdFixed, 
+      householdProjected, 
+      workDays: myWorkDates.size 
+  };
 };
 
 // 年収計算
@@ -235,6 +256,6 @@ export const deleteShiftsRange = (currentShifts, startDate, endDate, jobId) => {
 
 export const mergeSharedData = (local, sharedDocs) => {
     const mergedShifts = { ...local.shifts };
-    // 簡易的な共有マージ処理（必要に応じて実装）
+    // 簡易的な共有マージ処理
     return { shifts: mergedShifts };
 };
