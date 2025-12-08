@@ -29,18 +29,16 @@ export const AuthProvider = ({ children }) => {
           uid: result.user.uid,
           name: result.user.displayName,
           email: result.user.email,
-          plan: 'free', // 初期値
+          plan: 'free',
           groupId: null,
           createdAt: new Date()
         });
       }
-      
       if (inviteCode) {
         await joinGroup(result.user.uid, inviteCode);
         setInviteCode(null);
         window.history.replaceState({}, document.title, "/app");
       }
-
     } catch (error) {
       console.error("Login failed", error);
     }
@@ -76,20 +74,16 @@ export const AuthProvider = ({ children }) => {
 
   const kickMember = async (targetUid) => {
     if (!userProfile?.groupId || userProfile.role !== 'owner') return;
-    if (!window.confirm("このメンバーを削除しますか？")) return;
+    if (!window.confirm("削除しますか？")) return;
     const groupRef = doc(db, "groups", userProfile.groupId);
     await updateDoc(groupRef, { members: arrayRemove(targetUid) });
-    await updateDoc(doc(db, "users", targetUid), { 
-      groupId: null, 
-      kickedFrom: userProfile.groupId,
-      kickedAt: new Date()
-    });
-    alert("メンバーを削除しました。");
+    await updateDoc(doc(db, "users", targetUid), { groupId: null, kickedFrom: userProfile.groupId, kickedAt: new Date() });
+    alert("削除しました");
   };
 
   const leaveGroup = async () => {
     if (!userProfile?.groupId) return;
-    if (window.confirm("グループから退会しますか？共有データは見られなくなります。")) {
+    if (window.confirm("退会しますか？")) {
         const groupRef = doc(db, "groups", userProfile.groupId);
         await updateDoc(groupRef, { members: arrayRemove(currentUser.uid) });
         await updateDoc(doc(db, "users", currentUser.uid), { groupId: null, role: null });
@@ -104,9 +98,7 @@ export const AuthProvider = ({ children }) => {
       if (user) {
         const docRef = doc(db, "users", user.uid);
         const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setUserProfile(docSnap.data());
-        }
+        if (docSnap.exists()) setUserProfile(docSnap.data());
       } else {
         setUserProfile(null);
       }
@@ -115,20 +107,10 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
-  // ★修正: standard プランもプレミアム扱いとする
   const isPremium = ['standard', 'couple', 'family'].includes(userProfile?.plan);
 
   const value = {
-    currentUser,
-    userProfile,
-    login,
-    logout,
-    createGroup,
-    joinGroup,
-    kickMember,
-    leaveGroup,
-    isPremium, // ここで判定済みの値を渡す
-    isOwner: userProfile?.role === 'owner'
+    currentUser, userProfile, login, logout, createGroup, joinGroup, kickMember, leaveGroup, isPremium, isOwner: userProfile?.role === 'owner'
   };
 
   return (

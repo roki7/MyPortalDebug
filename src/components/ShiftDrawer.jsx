@@ -1,103 +1,186 @@
 // src/components/ShiftDrawer.jsx
-import React, { useState } from 'react';
-import { Drawer, Box, Typography, Grid, Button, Divider, TextField } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { 
+  Drawer, List, ListItem, ListItemIcon, ListItemText, Typography, 
+  Box, Divider, TextField, Button, Tabs, Tab, FormControlLabel, Switch 
+} from '@mui/material';
+import { Work, AddCircle, Edit, AccessTime, CalendarToday } from '@mui/icons-material';
 import { format } from 'date-fns';
-import { Person, EditNote } from '@mui/icons-material';
 
 export default function ShiftDrawer({ open, onClose, jobs, members, selectedDate, onAddShift }) {
-  const [showManual, setShowManual] = useState(false);
-  const [manualName, setManualName] = useState('');
-  const [manualAmount, setManualAmount] = useState('');
+  const [tabIndex, setTabIndex] = useState(0); // 0:選択, 1:単発
+  
+  // 共通: 振込日
+  const [customPayDate, setCustomPayDate] = useState('');
 
-  const handleAddManual = () => {
-      if(manualName && manualAmount) {
-          // 特別なジョブオブジェクトを作成して渡す
-          onAddShift({ 
-              id: 'custom', // 特別ID
-              type: 'manual', 
-              name: manualName, 
-              value: 0, // 値はシフト側に持たせる
-              isCustom: true 
-          }, parseInt(manualAmount));
-          setManualName('');
-          setManualAmount('');
-          setShowManual(false);
-      }
+  // 単発用State
+  const [customName, setCustomName] = useState('');
+  const [customAmount, setCustomAmount] = useState('');
+  const [customStart, setCustomStart] = useState('09:00');
+  const [customEnd, setCustomEnd] = useState('17:00');
+  const [hasTime, setHasTime] = useState(true); // 時間指定ありなし
+
+  const dateStr = selectedDate ? format(selectedDate, 'M月d日') : '';
+
+  // 開くたびにリセット
+  useEffect(() => {
+    if (open) {
+      setTabIndex(0);
+      setCustomPayDate('');
+      setCustomName('');
+      setCustomAmount('');
+      setCustomStart('09:00');
+      setCustomEnd('17:00');
+      setHasTime(true);
+    }
+  }, [open]);
+
+  // 既存ジョブ選択時
+  const handleSelectJob = (job) => {
+    // 振込日(customPayDate)のみ渡す。金額はJob設定依存
+    onAddShift(job, 0, customPayDate);
+    onClose();
+  };
+
+  // 単発登録時
+  const handleSaveCustom = () => {
+    if (!customName) {
+      alert("仕事名を入力してください");
+      return;
+    }
+    const customJob = { id: 'custom', name: customName, type: 'manual' };
+    const amount = parseInt(customAmount) || 0;
+    
+    // 時間指定がない場合は start/end を空にする
+    const start = hasTime ? customStart : '';
+    const end = hasTime ? customEnd : '';
+
+    onAddShift(customJob, amount, customPayDate, start, end);
+    onClose();
   };
 
   return (
-    <Drawer anchor="bottom" open={open} onClose={() => { setShowManual(false); onClose(); }}>
-      <Box sx={{ p: 3, maxHeight: '80vh', overflowY: 'auto' }}>
-        <Typography variant="h6" gutterBottom>
-          {selectedDate && format(selectedDate, 'M月d日')}のシフトを追加
-        </Typography>
-
-        {/* ★追加: 単発・手入力エリア */}
-        <Box sx={{ mb: 2 }}>
-            {!showManual ? (
-                <Button 
-                    fullWidth variant="outlined" startIcon={<EditNote />} 
-                    onClick={() => setShowManual(true)}
-                    sx={{ borderStyle: 'dashed', color: 'text.secondary' }}
-                >
-                    単発・手入力 (ウーバーなど)
-                </Button>
-            ) : (
-                <Box sx={{ bgcolor: '#f5f5f5', p: 2, borderRadius: 2 }}>
-                    <Typography variant="caption" fontWeight="bold">単発案件の入力</Typography>
-                    <Grid container spacing={2} sx={{ mt: 0.5, mb: 2 }}>
-                        <Grid item xs={7}>
-                            <TextField label="仕事名" size="small" fullWidth value={manualName} onChange={(e)=>setManualName(e.target.value)} placeholder="例: Uber" />
-                        </Grid>
-                        <Grid item xs={5}>
-                            <TextField label="金額" type="number" size="small" fullWidth value={manualAmount} onChange={(e)=>setManualAmount(e.target.value)} />
-                        </Grid>
-                    </Grid>
-                    <Box sx={{ display:'flex', gap:1 }}>
-                        <Button fullWidth variant="outlined" onClick={() => setShowManual(false)}>戻る</Button>
-                        <Button fullWidth variant="contained" onClick={handleAddManual} disabled={!manualName || !manualAmount}>追加</Button>
-                    </Box>
-                </Box>
-            )}
-        </Box>
-        <Divider sx={{ mb: 2 }} />
-
-        {/* 既存の仕事リスト */}
-        {members.map((member) => {
-          const memberJobs = jobs.filter(j => j.memberId === member.id);
-          if (memberJobs.length === 0) return null;
-
-          return (
-            <Box key={member.id} sx={{ mb: 3 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <Person sx={{ mr: 0.5, color: 'text.secondary' }} />
-                <Typography variant="subtitle1" fontWeight="bold">{member.name}</Typography>
-              </Box>
-              <Grid container spacing={2}>
-                {memberJobs.map(job => (
-                  <Grid item xs={6} key={job.id}>
-                    <Button 
-                      fullWidth variant="contained" 
-                      onClick={() => onAddShift(job)}
-                      sx={{ 
-                        bgcolor: job.color, height: 60, 
-                        display: 'flex', flexDirection: 'column', justifyContent: 'center',
-                        boxShadow: 'none', '&:hover': { bgcolor: job.color, opacity: 0.9 }
-                      }}
-                    >
-                      <Typography fontWeight="bold" variant="body2">{job.name}</Typography>
-                      <Typography variant="caption" sx={{ opacity: 0.9, fontSize: 10 }}>
-                        {job.type === 'manual' ? '金額入力' : `${job.defaultStart || '09:00'} - ${job.defaultEnd || '17:00'}`}
-                      </Typography>
-                    </Button>
-                  </Grid>
-                ))}
-              </Grid>
-              <Divider sx={{ mt: 2 }} />
-            </Box>
-          );
-        })}
+    <Drawer anchor="bottom" open={open} onClose={onClose} PaperProps={{ sx: { borderRadius: '16px 16px 0 0', pb: 2, maxHeight: '85vh' } }}>
+      <Box sx={{ p: 1, textAlign: 'center', borderBottom: 1, borderColor: 'divider' }}>
+        <Typography variant="h6">{dateStr}のシフト</Typography>
       </Box>
+
+      <Tabs 
+        value={tabIndex} 
+        onChange={(e, v) => setTabIndex(v)} 
+        variant="fullWidth" 
+        sx={{ borderBottom: 1, borderColor: 'divider', mb: 1 }}
+      >
+        <Tab label="いつもの仕事" />
+        <Tab label="単発・手入力" />
+      </Tabs>
+
+      {/* タブ0: 既存リスト選択 */}
+      {tabIndex === 0 && (
+        <Box>
+          {/* 振込日指定 (オプション) */}
+          <Box sx={{ px: 2, py: 1, bgcolor: '#f9f9f9', display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CalendarToday fontSize="small" color="action" />
+            <TextField 
+              label="振込予定日 (任意)" 
+              type="date" 
+              size="small" 
+              fullWidth 
+              InputLabelProps={{ shrink: true }}
+              value={customPayDate} 
+              onChange={(e) => setCustomPayDate(e.target.value)} 
+              sx={{ bgcolor: 'white' }}
+            />
+          </Box>
+          <Divider />
+
+          <List sx={{ maxHeight: '50vh', overflowY: 'auto' }}>
+            {jobs.map(job => {
+              const owner = members.find(m => m.id === job.memberId)?.name || '自分';
+              return (
+                <ListItem button key={job.id} onClick={() => handleSelectJob(job)}>
+                  <ListItemIcon>
+                    <Work sx={{ color: job.color }} />
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={job.name} 
+                    secondary={`${owner} • ${job.type === 'hourly' ? `¥${job.value}/h` : `¥${job.value}`}`} 
+                  />
+                  <AddCircle color="primary" />
+                </ListItem>
+              );
+            })}
+            {jobs.length === 0 && (
+              <Box sx={{ p: 4, textAlign: 'center', opacity: 0.6 }}>
+                <Typography>登録済みの仕事がありません</Typography>
+                <Typography variant="caption">設定タブから仕事を追加するか、「単発」タブを使ってください</Typography>
+              </Box>
+            )}
+          </List>
+        </Box>
+      )}
+
+      {/* タブ1: 単発入力フォーム */}
+      {tabIndex === 1 && (
+        <Box sx={{ p: 3 }}>
+          <TextField 
+            label="仕事名 (必須)" 
+            fullWidth 
+            value={customName} 
+            onChange={(e) => setCustomName(e.target.value)} 
+            sx={{ mb: 2 }}
+            placeholder="例: 引っ越し手伝い"
+          />
+          
+          <TextField 
+            label="金額 (円)" 
+            type="number" 
+            fullWidth 
+            value={customAmount} 
+            onChange={(e) => setCustomAmount(e.target.value)} 
+            sx={{ mb: 2 }}
+          />
+
+          <Box sx={{ mb: 2, p: 1, border: '1px solid #eee', borderRadius: 1 }}>
+            <FormControlLabel 
+              control={<Switch checked={hasTime} onChange={(e) => setHasTime(e.target.checked)} />} 
+              label="時間を指定する" 
+            />
+            {hasTime && (
+              <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+                <TextField 
+                  label="開始" type="time" fullWidth size="small" InputLabelProps={{ shrink: true }}
+                  value={customStart} onChange={(e) => setCustomStart(e.target.value)} 
+                />
+                <TextField 
+                  label="終了" type="time" fullWidth size="small" InputLabelProps={{ shrink: true }}
+                  value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} 
+                />
+              </Box>
+            )}
+          </Box>
+
+          <TextField 
+            label="振込予定日 (任意)" 
+            type="date" 
+            fullWidth 
+            InputLabelProps={{ shrink: true }}
+            value={customPayDate} 
+            onChange={(e) => setCustomPayDate(e.target.value)} 
+            sx={{ mb: 3 }}
+          />
+
+          <Button 
+            variant="contained" 
+            fullWidth 
+            size="large" 
+            onClick={handleSaveCustom}
+            startIcon={<AddCircle />}
+          >
+            保存して追加
+          </Button>
+        </Box>
+      )}
     </Drawer>
   );
 }
