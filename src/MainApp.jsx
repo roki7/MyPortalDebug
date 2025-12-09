@@ -1,5 +1,5 @@
 // src/MainApp.jsx
-import React, { useState, useEffect, useMemo } from 'react'; // ★ useMemo を追加
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Box, Container, Paper, Typography, Tabs, Tab, LinearProgress, Chip, IconButton, 
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Avatar, Fab,
@@ -125,7 +125,7 @@ export default function MainApp() {
     return () => clearTimeout(timer);
   }, [settings, members, jobs, shifts, accounts, recurring, payments, templates, shopping, myLinks, linkCategories, currentUser, isLoaded, userProfile]);
 
-  // ★修正: 無限ループ回避のため useMemo でメモ化
+  // ★ useMemo を使用して無限ループを防止しつつマージデータを生成
   const fullMergedData = useMemo(() => {
       return mergeSharedData({ uid: currentUser?.uid, shifts, jobs }, sharedDocs);
   }, [currentUser, shifts, jobs, sharedDocs]);
@@ -134,7 +134,7 @@ export default function MainApp() {
   const displayShifts = viewMode === 'shared' ? fullMergedData.shifts : shifts;
   const displayJobs = viewMode === 'shared' ? fullMergedData.jobs : jobs;
 
-  // 計算用
+  // 計算用: 確定・見込み計算には常に全データ(fullMergedData)を渡す
   const calculationShifts = fullMergedData.shifts;
   const calculationJobs = fullMergedData.jobs;
   
@@ -166,6 +166,8 @@ export default function MainApp() {
   }, []);
 
   useEffect(() => {
+    // リアルタイム収支
+    // isHouseholdがONなら全シフト、OFFなら自分のシフト
     const targetShifts = isHousehold 
         ? fullMergedData.shifts 
         : filterShiftsForUser(fullMergedData.shifts, fullMergedData.jobs, 'me');

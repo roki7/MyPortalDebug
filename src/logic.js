@@ -165,7 +165,10 @@ export const mergeSharedData = (local, sharedDocs) => {
     sharedDocs.forEach(doc => {
         if (doc.id === local.uid) return;
 
-        const data = doc.data?.personal || {};
+        // ★修正: doc.data() が関数の場合に対応
+        const rawData = typeof doc.data === 'function' ? doc.data() : doc.data;
+        const data = rawData?.personal || {};
+
         const sShifts = data.shifts || {};
         const sJobs = data.jobs || [];
         
@@ -193,7 +196,7 @@ export const mergeSharedData = (local, sharedDocs) => {
     return { shifts: mergedShifts, jobs: mergedJobs };
 };
 
-// ★修正: settingsを受け取り、ターゲット月を判定して計算
+// settingsを受け取り、ターゲット月を判定して計算
 export const calculateMonthlyEarnings = (shifts, jobs, currentDate, settings) => {
   let personalFixed = 0;
   let personalProjected = 0;
@@ -226,9 +229,11 @@ export const calculateMonthlyEarnings = (shifts, jobs, currentDate, settings) =>
           if (payDate.getFullYear() === targetYear && payDate.getMonth() === targetMonth) {
               let amount = calculateShiftAmount(shift, job, shifts, dateStr);
 
+              // 世帯計算には常に加算
               if (payDate <= new Date()) householdFixed += amount;
               householdProjected += amount;
 
+              // 個人計算
               if (isMyShift) {
                   if (payDate <= new Date()) personalFixed += amount;
                   personalProjected += amount;

@@ -61,9 +61,30 @@ export const INITIAL_PAYMENT_TEMPLATES = [
   { id: 'tpl_5', name: 'ドラッグストア' }
 ];
 export const INITIAL_MEMBERS = [{ id: 'me', name: '自分', color: '#1976d2' }];
-export const INITIAL_SHOPPING = { list: [], stock: [] };
 
-// ★ここが修正箇所。既存の INITIAL_SETTINGS を置き換える
+// ★修正: デフォルトの定番在庫を追加
+export const INITIAL_SHOPPING = { 
+  list: [], 
+  stock: [
+    { id: 's1', name: '牛乳', yomi: 'ぎゅうにゅう' },
+    { id: 's2', name: '卵', yomi: 'たまご' },
+    { id: 's3', name: '食パン', yomi: 'しょくぱん' },
+    { id: 's4', name: 'トイレットペーパー', yomi: 'といれっとぺーぱー' },
+    { id: 's5', name: 'ティッシュ', yomi: 'てぃっしゅ' },
+    { id: 's6', name: '洗濯洗剤', yomi: 'せんたくせんざい' },
+    { id: 's7', name: '食器用洗剤', yomi: 'しょっきようせんざい' },
+    { id: 's8', name: 'シャンプー', yomi: 'しゃんぷー' },
+    { id: 's9', name: 'ボディソープ', yomi: 'ぼでぃそーぷ' },
+    { id: 's10', name: '歯磨き粉', yomi: 'はみがきこ' },
+    { id: 's11', name: '米', yomi: 'こめ' },
+    { id: 's12', name: '納豆', yomi: 'なっとう' },
+    { id: 's13', name: 'マヨネーズ', yomi: 'まよねーず' },
+    { id: 's14', name: 'ケチャップ', yomi: 'けちゃっぷ' },
+    { id: 's15', name: 'ゴミ袋', yomi: 'ごみぶくろ' }
+  ],
+  history: []
+};
+
 export const INITIAL_SETTINGS = { 
   calcMode: 'realtime', 
   location: PREFECTURES[7], 
@@ -72,7 +93,6 @@ export const INITIAL_SETTINGS = {
   transferBase: 'next_month' 
 };
 
-// --- 頂いた正しいカテゴリ ---
 export const LINK_CATEGORIES = [
   { id: 'bank', name: '銀行' },
   { id: 'card', name: 'カード' },
@@ -83,7 +103,6 @@ export const LINK_CATEGORIES = [
   { id: 'other', name: 'その他' }
 ];
 
-// --- 頂いた正しいプリセット ---
 export const PRESET_LINKS = [
   { name: 'LINE', url: 'line://', short: 'LINE', cat: 'app' },
   { name: 'Instagram', url: 'instagram://app', short: 'Insta', cat: 'app' },
@@ -120,7 +139,6 @@ export const PRESET_LINKS = [
   { name: '水道局', url: 'https://www.waterworks.metro.tokyo.lg.jp/', short: '水道', cat: 'infra' },
 ];
 
-// ★追加: アプリで使える形式に変換してエクスポート
 export const INITIAL_MY_LINKS = PRESET_LINKS.map((p, i) => ({
   id: `preset_${i}`,
   title: p.name,

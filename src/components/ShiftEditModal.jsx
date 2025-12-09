@@ -46,6 +46,15 @@ export default function ShiftEditModal({ open, onClose, shift, job, onUpdate, on
     onClose();
   };
 
+  // ★修正: ステータスのトグル処理（同じボタンを押すと通常に戻る）
+  const handleToggleStatus = (targetStatus) => {
+      if (status === targetStatus) {
+          setStatus('attended'); // 解除して通常へ
+      } else {
+          setStatus(targetStatus);
+      }
+  };
+
   if (!shift) return null;
 
   // 早退・欠勤時は時間をグレーアウトする判定
@@ -55,17 +64,24 @@ export default function ShiftEditModal({ open, onClose, shift, job, onUpdate, on
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
       <DialogTitle>{job?.name || shift.customName || '詳細編集'}</DialogTitle>
       <DialogContent>
-        {/* ステータス変更 */}
+        {/* ステータス変更: トグル式に変更 */}
         <Box sx={{ mb: 2, display: 'flex', gap: 1 }}>
             <Button 
-                variant={status === 'attended' ? 'contained' : 'outlined'} 
-                onClick={() => setStatus('attended')} color="primary">通常</Button>
-            <Button 
                 variant={status === 'early_leave' ? 'contained' : 'outlined'} 
-                onClick={() => setStatus('early_leave')} color="warning">早退</Button>
+                onClick={() => handleToggleStatus('early_leave')} 
+                color="warning" 
+                fullWidth
+            >
+                早退
+            </Button>
             <Button 
                 variant={status === 'absence' ? 'contained' : 'outlined'} 
-                onClick={() => setStatus('absence')} color="error">欠勤</Button>
+                onClick={() => handleToggleStatus('absence')} 
+                color="error" 
+                fullWidth
+            >
+                欠勤
+            </Button>
         </Box>
 
         {/* 時間変更（時給制の場合のみ表示、手動ONでも消さない） */}
@@ -104,7 +120,7 @@ export default function ShiftEditModal({ open, onClose, shift, job, onUpdate, on
         <Box sx={{ bgcolor: '#fff3e0', p: 2, borderRadius: 2 }}>
             <FormControlLabel 
                 control={<Switch checked={isManual} onChange={(e) => setIsManual(e.target.checked)} />} 
-                label="選択シフトのみ修正" 
+                label="選択シフトのみ修正 (金額・振込予定日)" 
                 sx={{ mb: 1, display: 'block' }}
             />
             
