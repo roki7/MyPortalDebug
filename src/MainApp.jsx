@@ -1,5 +1,5 @@
 // src/MainApp.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react'; // ★ useMemo を追加
 import { 
   Box, Container, Paper, Typography, Tabs, Tab, LinearProgress, Chip, IconButton, 
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Avatar, Fab,
@@ -108,11 +108,11 @@ export default function MainApp() {
   }, [currentUser, userProfile]);
 
   useEffect(() => {
-      if (userProfile?.groupId && viewMode === 'shared') {
+      if (userProfile?.groupId && (viewMode === 'shared' || isHousehold)) {
           const unsub = subscribeToSharedData(userProfile.groupId, (docs) => setSharedDocs(docs));
           return () => unsub();
       }
-  }, [userProfile, viewMode]);
+  }, [userProfile, viewMode, isHousehold]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -125,13 +125,18 @@ export default function MainApp() {
     return () => clearTimeout(timer);
   }, [settings, members, jobs, shifts, accounts, recurring, payments, templates, shopping, myLinks, linkCategories, currentUser, isLoaded, userProfile]);
 
-  // ★修正: 共有モード時はジョブも含めてマージしたデータを使用する
-  const mergedData = viewMode === 'shared' 
-      ? mergeSharedData({ uid: currentUser?.uid, shifts, jobs }, sharedDocs) 
-      : { shifts, jobs };
-      
-  const displayShifts = mergedData.shifts;
-  const displayJobs = mergedData.jobs;
+  // ★修正: 無限ループ回避のため useMemo でメモ化
+  const fullMergedData = useMemo(() => {
+      return mergeSharedData({ uid: currentUser?.uid, shifts, jobs }, sharedDocs);
+  }, [currentUser, shifts, jobs, sharedDocs]);
+
+  // カレンダー表示用
+  const displayShifts = viewMode === 'shared' ? fullMergedData.shifts : shifts;
+  const displayJobs = viewMode === 'shared' ? fullMergedData.jobs : jobs;
+
+  // 計算用
+  const calculationShifts = fullMergedData.shifts;
+  const calculationJobs = fullMergedData.jobs;
   
   const totalFixedCost = recurring ? recurring.reduce((sum, item) => sum + (parseInt(item.amount)||0), 0) : 0;
 
@@ -145,16 +150,15 @@ export default function MainApp() {
   useEffect(() => { const todayDay = new Date().getDate(); const creditCards = accounts.filter(a => a.type === 'credit'); creditCards.forEach(card => { const checkDay = card.confirmationDay || card.billingDay; if (checkDay === todayDay) { const unsettledAmount = payments.filter(p => p.accountId === card.id && !p.isSettled).reduce((sum, p) => sum + p.amount, 0); if (unsettledAmount > 0) { setCCNotification({ title: `${card.name}の請求確定日`, msg: `未確定額: ¥${unsettledAmount.toLocaleString()}`}); }}});}, [accounts, payments, isLoaded]);
   
   useEffect(() => { 
-      // ★修正: 計算関数には統合された displayJobs を渡す
-      const r = calculateMonthlyEarnings(displayShifts, displayJobs, currentDate, settings); 
+      const r = calculateMonthlyEarnings(calculationShifts, calculationJobs, currentDate, settings); 
       setEarnings(r); 
       
-      const ann = calculateAnnualIncome(displayShifts, displayJobs, currentDate); 
+      const ann = calculateAnnualIncome(calculationShifts, calculationJobs, currentDate); 
       setAnnualIncome(ann); 
       
-      const summary = getAnnualSummary(displayShifts, displayJobs, currentDate); 
+      const summary = getAnnualSummary(calculationShifts, calculationJobs, currentDate); 
       setAnnualSummary(summary);
-  }, [displayShifts, displayJobs, currentDate, settings]);
+  }, [calculationShifts, calculationJobs, currentDate, settings]);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 30000);
@@ -162,30 +166,29 @@ export default function MainApp() {
   }, []);
 
   useEffect(() => {
-    // 世帯ONなら全シフト、OFFなら自分のシフトだけに絞る（統合されたジョブ情報を使ってフィルタリング）
-    const targetShifts = isHousehold ? displayShifts : filterShiftsForUser(displayShifts, displayJobs, 'me');
+    const targetShifts = isHousehold 
+        ? fullMergedData.shifts 
+        : filterShiftsForUser(fullMergedData.shifts, fullMergedData.jobs, 'me');
     
-    // ★修正: displayJobs を渡す
-    const val = calculateCurrentEarnings(targetShifts, displayJobs, currentDate, now, settings);
+    const val = calculateCurrentEarnings(targetShifts, fullMergedData.jobs, currentDate, now, settings);
     const label = getDisplayLabel(settings);
     
     setCurrentRealtimeEarnings(val);
     setRealtimeLabel(label);
-  }, [displayShifts, displayJobs, currentDate, now, settings, isHousehold]);
+  }, [fullMergedData, currentDate, now, settings, isHousehold]);
 
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
   const handleOpenJobAdd = () => {
-    setEditingJob(null); // 
+    setEditingJob(null); 
     setJobDialogOpen(true);
   };
 
   const handleOpenJobEdit = (job) => {
-    setEditingJob(job); // 
+    setEditingJob(job); 
     setJobDialogOpen(true);
   };
 
-  // ★追加: 仕事保存のハンドラ (新規・更新の振り分け)
   const handleSaveJob = (jobData) => {
     if (jobData.id) {
         handleUpdateJob(jobData);
@@ -194,7 +197,6 @@ export default function MainApp() {
     }
   };
 
-  // ★追加: シフト更新ハンドラ (ShiftEditModalからの返り値を受け取る)
   const handleUpdateShiftFull = (updatedShift) => {
       if (!selectedDate) return;
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -330,12 +332,11 @@ export default function MainApp() {
             <CalendarTab 
                 currentDate={currentDate} 
                 shifts={displayShifts} 
-                jobs={displayJobs} // ★修正: カレンダーにも統合されたジョブを渡す
+                jobs={displayJobs} 
                 weatherData={weatherData} 
                 onDateClick={(d) => { setSelectedDate(d); setOpenMenu(true); }} 
                 onShiftClick={(s, d) => { 
                     setSelectedDate(d); 
-                    // ここでモーダル用のデータを準備
                     const job = jobs.find(j => String(j.id) === String(s.jobId));
                     let initBreak = s.breakTime;
                     if (initBreak === undefined || initBreak === null || initBreak === '') {
@@ -346,7 +347,6 @@ export default function MainApp() {
             />
         )}
         
-        {/* 他のタブは displayJobs に変更しなくても影響小だが、一貫性のため変更推奨箇所があれば変更する */}
         {tabIndex === 1 && (
             <FinanceTab 
                 accounts={accounts} payments={payments} templates={templates} myLinks={myLinks} currentDate={currentDate} 
@@ -366,7 +366,6 @@ export default function MainApp() {
         {tabIndex === 4 && <ReportTab annualIncome={currentAnnualIncome} summary={annualSummary} targetLimit={settings.targetLimit} accounts={accounts} totalFixedCost={totalFixedCost} />}
         {tabIndex === 5 && <MotivationTab currentEarnings={earnings.personalFixed} fixedCost={totalFixedCost} />}
         
-        {/* 設定タブは「自分の仕事」を編集する場所なので、localのjobsを渡したままにする */}
         {tabIndex === 6 && <SettingsTab jobs={jobs} settings={settings} members={members} onAddJob={handleAddJob} 
         onUpdateJob={handleUpdateJob} onDeleteJob={handleDeleteJob} onUpdateSettings={setSettings} onGenerateAnnualShifts={handleGenerateAnnualShifts} 
         onGenerateRange={handleGenerateRange} onDeleteRange={handleDeleteRange} onUpdateMembers={setMembers} fullData={{ settings, members, jobs, shifts, accounts, recurring, payments, templates, shopping, myLinks, linkCategories }} 
@@ -405,7 +404,6 @@ export default function MainApp() {
           members={members} 
           selectedDate={selectedDate} 
           onAddShift={handleAddShift}
-          //  ドロワーからの鉛筆マーク・追加ボタンに対応
           onEditJobRequest={handleOpenJobEdit} 
           onAddJobRequest={handleOpenJobAdd}
       />
@@ -421,7 +419,6 @@ export default function MainApp() {
           />
       )}
 
-      {/* ★追加: 仕事編集ダイアログ */}
       <JobEditDialog 
           open={jobDialogOpen} 
           onClose={() => setJobDialogOpen(false)} 
@@ -429,8 +426,6 @@ export default function MainApp() {
           members={members} 
           onSave={handleSaveJob} 
       />
-
-      {/* ... (ReloadPrompt, Notificationなど) ... */}
     </Container>
   );
 }

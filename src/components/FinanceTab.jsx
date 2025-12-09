@@ -4,14 +4,14 @@ import {
   Box, Typography, Card, CardContent, CardActions, 
   List, ListItem, ListItemText, ListItemSecondaryAction, ListItemIcon,
   IconButton, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, 
-  Select, MenuItem, InputLabel, FormControl, Tabs, Tab, Checkbox, FormControlLabel, Chip, Divider, Grid
+  Select, MenuItem, InputLabel, FormControl, Tabs, Tab, Checkbox, FormControlLabel, Chip, Divider, Grid 
 } from '@mui/material';
 import { 
   Add, Edit, Delete, AccountBalance, CheckCircle, RadioButtonUnchecked, 
   Loop, CreditCard, CalendarToday, Link as LinkIcon, 
-  HelpOutline, Savings, ListAlt, AccountBalanceWallet 
+  HelpOutline, ListAlt, AccountBalanceWallet 
 } from '@mui/icons-material';
-import { format, subDays } from 'date-fns';
+import { format, subDays, setDate, parseISO } from 'date-fns';
 
 export default function FinanceTab({ 
   accounts, payments, templates, myLinks, currentDate,
@@ -30,13 +30,12 @@ export default function FinanceTab({
   const [openCreditDialog, setOpenCreditDialog] = useState(false);
   
   const [openRecurringDialog, setOpenRecurringDialog] = useState(false);
-  const [openFixEditDialog, setOpenFixEditDialog] = useState(false);
 
   // 編集用State
   const [editPayment, setEditPayment] = useState({ id: null, name: '', amount: '', accountId: '', isRecurring: false, date: '' });
   const [editAccount, setEditAccount] = useState({ name: '', type: 'cash', balance: 0, billingDay: '', confirmationDay: '', paymentDay: '', linkId: '' });
-  const [editRecurring, setEditRecurring] = useState({ name: '', amount: '', accountId: '', day: 25, isVariable: false, cycle: 'every', linkId: '' });
-  const [editFixedItem, setEditFixedItem] = useState(null); 
+  // 固定費編集用: targetPaymentId は、リストから編集した場合にその「今月の支払いデータID」を保持する
+  const [editRecurring, setEditRecurring] = useState({ id: null, name: '', amount: '', accountId: '', day: 25, isVariable: false, cycle: 'every', linkId: '', targetPaymentId: null });
 
   // スワイプ処理
   const [touchStart, setTouchStart] = useState(null);
@@ -63,41 +62,116 @@ export default function FinanceTab({
   const getAccountIcon = (accId) => {
       const acc = accounts.find(a => a.id === accId);
       if (!acc) return <HelpOutline fontSize="small" color="disabled" />;
-      // ★修正: 現金口座のアイコンを AccountBalance (銀行) にしました
-      return acc.type === 'credit' ? <CreditCard fontSize="small" color="primary" /> : <AccountBalance fontSize="small" color="success" />;
+      return acc.type === 'credit' ? <CreditCard fontSize="small" color="primary" /> : <AccountBalanceWallet fontSize="small" color="success" />;
   };
 
   // Handlers
   const handleOpenAddPayment = () => {
-    // ★修正: 日付の初期値を空白にしました
-    setEditPayment({ id: null, name: '', amount: '', accountId: accounts[0]?.id || '', isRecurring: false, date: '' });
+    // ★修正: 初期値として今日の日付を設定
+    setEditPayment({ 
+        id: null, 
+        name: '', 
+        amount: '', 
+        accountId: accounts[0]?.id || '', 
+        isRecurring: false, 
+        date: format(new Date(), 'yyyy-MM-dd') 
+    });
     setOpenPaymentDialog(true);
   };
+
   const handleSavePayment = () => {
     if(editPayment.name && editPayment.amount && editPayment.accountId){
-      // 日付未入力なら今日を入れる(データとして)
+      // 日付が空欄の場合は今日を入れる（念のため）
       const paymentDate = editPayment.date || format(new Date(), 'yyyy-MM-dd');
-      const payData = { ...editPayment, amount: parseInt(editPayment.amount), date: paymentDate, month: paymentDate.slice(0, 7) };
+      const payData = { 
+          ...editPayment, 
+          amount: parseInt(editPayment.amount), 
+          date: paymentDate, 
+          month: paymentDate.slice(0, 7) 
+      };
       if(editPayment.id) onUpdatePayment(payData); else onAddPayment(payData);
       setOpenPaymentDialog(false);
     }
   };
 
+  // 固定費リストから編集ボタンを押した時の処理
+  const handleEditFixedCost = (paymentItem) => {
+      // 親の固定費設定を探す
+      const recDef = recurring.find(r => r.id === paymentItem.recurringId);
+      if (!recDef) {
+          alert("元の設定が見つかりませんでした");
+          return;
+      }
+      // 固定費設定の内容でダイアログを開く
+      setEditRecurring({ 
+          ...recDef, 
+          amount: recDef.amount || paymentItem.amount, // 設定に金額がなければ今の金額
+          targetPaymentId: paymentItem.id // ★今月のこの支払いを更新するためにIDを控える
+      });
+      setOpenRecurringDialog(true);
+  };
+
   const handleSaveRecurring = () => {
     if(editRecurring.name && editRecurring.accountId){
       const amountVal = editRecurring.amount ? parseInt(editRecurring.amount) : 0;
-      const recData = { ...editRecurring, amount: amountVal };
-      if(editRecurring.id) onUpdateRecurring(recData); else onAddRecurring(recData);
+      const recId = editRecurring.id || Date.now().toString();
+      
+      const recData = { 
+          id: recId,
+          name: editRecurring.name,
+          amount: amountVal,
+          accountId: editRecurring.accountId,
+          day: parseInt(editRecurring.day),
+          isVariable: editRecurring.isVariable,
+          cycle: editRecurring.cycle,
+          linkId: editRecurring.linkId
+      };
+      
+      if(editRecurring.id) {
+          // --- 更新 ---
+          onUpdateRecurring(recData);
+          
+          // ★リストから編集した場合(targetPaymentIdあり)、今月の支払いデータも更新する
+          if (editRecurring.targetPaymentId) {
+              const targetPayment = payments.find(p => p.id === editRecurring.targetPaymentId);
+              if (targetPayment) {
+                  // 新しい支払日を計算 (今月の年・月 + 新しい設定日)
+                  // ※日付が無効(例えば2月30日)の場合の厳密な処理は date-fns/setDate がよしなに処理する(翌月1日等)が、ここでは簡易的に設定
+                  const currentPaymentDate = new Date(targetPayment.date);
+                  const newDate = setDate(currentPaymentDate, recData.day);
+                  
+                  const updatedPayment = {
+                      ...targetPayment,
+                      name: recData.name,
+                      amount: amountVal, // 設定金額で上書き
+                      accountId: recData.accountId,
+                      date: format(newDate, 'yyyy-MM-dd'),
+                      // monthは変えない
+                  };
+                  onUpdatePayment(updatedPayment);
+              }
+          }
+      } else {
+          // --- 新規追加 ---
+          onAddRecurring(recData);
+          
+          // 新規追加時も即座に今月分のリストに表示させる
+          const targetDate = setDate(currentDate, recData.day);
+          const paymentData = {
+              id: Date.now() + Math.random(),
+              recurringId: recId,
+              name: recData.name,
+              amount: recData.amount,
+              accountId: recData.accountId,
+              isRecurring: true,
+              date: format(targetDate, 'yyyy-MM-dd'),
+              month: format(currentDate, 'yyyy-MM'),
+              paid: false
+          };
+          onAddPayment(paymentData);
+      }
       setOpenRecurringDialog(false);
     }
-  };
-
-  const handleSaveFixedItem = () => {
-      if (editFixedItem) {
-          const updated = { ...editFixedItem, amount: parseInt(editFixedItem.amount) };
-          onUpdatePayment(updated); 
-          setOpenFixEditDialog(false);
-      }
   };
 
   const handleSaveAccount = (closeFunc) => {
@@ -123,12 +197,10 @@ export default function FinanceTab({
   return (
     <Box onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
       
-      {/* 修正: アイコン変更 (ListAlt, Savings, AccountBalance) */}
       <Tabs value={subTab} onChange={(e,v)=>setSubTab(v)} variant="fullWidth" sx={{mb:2, borderBottom:1, borderColor:'divider'}}>
         <Tab icon={<ListAlt/>} label="収支" />
         <Tab icon={<Loop/>} label="固定費" />
-        {/* 資産タブはSavings(金庫)に変更 */}
-        <Tab icon={<Savings/>} label="資産" />
+        <Tab icon={<AccountBalance/>} label="資産" />
         <Tab icon={<CreditCard/>} label="カード" />
       </Tabs>
 
@@ -162,7 +234,7 @@ export default function FinanceTab({
              </CardContent>
            </Card>
            <Box sx={{display:'flex', gap:1, flexWrap:'wrap'}}>
-             {templates.map(t => (<Chip key={t.id} label={t.name} onClick={()=>{ setEditPayment({ id: null, name: t.name, amount: '', accountId: t.accountId || accounts[0]?.id || '', isRecurring: false, date: '' }); setOpenPaymentDialog(true); }} onDelete={()=>onDeleteTemplate(t.id)} />))}
+             {templates.map(t => (<Chip key={t.id} label={t.name} onClick={()=>{ setEditPayment({ id: null, name: t.name, amount: '', accountId: t.accountId || accounts[0]?.id || '', isRecurring: false, date: format(new Date(), 'yyyy-MM-dd') }); setOpenPaymentDialog(true); }} onDelete={()=>onDeleteTemplate(t.id)} />))}
              <Chip icon={<Add/>} label="テンプレ登録" variant="outlined" onClick={()=>{ const name = prompt("テンプレート名"); if(name) onAddTemplate(name); }}/>
            </Box>
         </Box>
@@ -173,7 +245,7 @@ export default function FinanceTab({
          <Box>
             <Box sx={{display:'flex', justifyContent:'space-between', mb:2}}>
                 <Typography variant="subtitle1" sx={{fontWeight:'bold'}}>{format(currentDate, 'M月')}の固定費</Typography>
-                <Button startIcon={<Add/>} size="small" variant="outlined" onClick={()=>{ setEditRecurring({name:'', amount:'', accountId:accounts[0]?.id, day:25, isVariable:false, cycle:'every', linkId:''}); setOpenRecurringDialog(true); }}>設定追加</Button>
+                <Button startIcon={<Add/>} size="small" variant="outlined" onClick={()=>{ setEditRecurring({id: null, name:'', amount:'', accountId:accounts[0]?.id, day:25, isVariable:false, cycle:'every', linkId:'', targetPaymentId: null}); setOpenRecurringDialog(true); }}>設定追加</Button>
             </Box>
             <List>
               {monthFixedCosts.map(item => {
@@ -181,7 +253,8 @@ export default function FinanceTab({
                 const linkId = recDef?.linkId;
                 return (
                 <ListItem key={item.id} sx={{bgcolor:'white', mb:1, borderRadius:1, boxShadow:1}}
-                  secondaryAction={<IconButton size="small" onClick={()=>{ setEditFixedItem(item); setOpenFixEditDialog(true); }}><Edit fontSize="small"/></IconButton>}>
+                  // ★修正: 編集ボタンで詳細な編集ダイアログを開くように変更
+                  secondaryAction={<IconButton size="small" onClick={()=>handleEditFixedCost(item)}><Edit fontSize="small"/></IconButton>}>
                   <ListItemIcon>{getAccountIcon(item.accountId)}</ListItemIcon>
                   <ListItemText 
                     primary={
@@ -196,7 +269,7 @@ export default function FinanceTab({
               )})}
               {monthFixedCosts.length === 0 && <Typography variant="body2" align="center" color="textSecondary">この月の固定費はありません</Typography>}
             </List>
-            <Typography variant="caption" display="block" align="center" sx={{mt:2, color:'gray'}}>※ここには自動生成された今月分のデータが表示されます。<br/>金額を変更したい場合は鉛筆マークを押してください。</Typography>
+            <Typography variant="caption" display="block" align="center" sx={{mt:2, color:'gray'}}>※鉛筆マークを押すと、設定（金額・支払元・日付・Link）を変更できます。<br/>変更は当月分および今後の自動生成分に反映されます。</Typography>
          </Box>
       )}
 
@@ -214,8 +287,7 @@ export default function FinanceTab({
                    <CardContent>
                       <Box sx={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                         <Box sx={{display:'flex', alignItems:'center'}}>
-                            {/* ★修正: 銀行アイコン (AccountBalance) */}
-                            <AccountBalance sx={{mr:1, color:'green'}}/>
+                            <AccountBalanceWallet sx={{mr:1, color:'green'}}/>
                             <Box ml={1}>
                                 <Typography variant="subtitle1">{acc.name}</Typography>
                                 {acc.linkId && <Button size="small" startIcon={<LinkIcon/>} onClick={()=>handleOpenLink(acc.linkId)} sx={{p:0, minWidth:0}}>サイトを開く</Button>}
@@ -307,12 +379,13 @@ export default function FinanceTab({
         <DialogActions><Button onClick={()=>setOpenPaymentDialog(false)}>キャンセル</Button><Button onClick={handleSavePayment} variant="contained">保存</Button></DialogActions>
       </Dialog>
 
+      {/* 固定費編集ダイアログ */}
       <Dialog open={openRecurringDialog} onClose={()=>setOpenRecurringDialog(false)}>
         <DialogTitle>{editRecurring.id ? '固定費を編集' : '固定費を追加'}</DialogTitle>
         <DialogContent>
            <TextField label="項目名" fullWidth margin="dense" value={editRecurring.name} onChange={e=>setEditRecurring({...editRecurring, name:e.target.value})} />
            <FormControlLabel control={<Checkbox checked={editRecurring.isVariable} onChange={e=>setEditRecurring({...editRecurring, isVariable: e.target.checked})}/>} label="金額は毎月変動する" sx={{mt:1, mb:1, display:'block'}}/>
-           <TextField label="設定金額" type="number" fullWidth margin="dense" value={editRecurring.amount} onChange={e=>setEditRecurring({...editRecurring, amount:e.target.value})} />
+           <TextField label="設定金額" type="number" fullWidth margin="dense" value={editRecurring.amount} onChange={e=>setEditRecurring({...editRecurring, amount:e.target.value})} helperText={editRecurring.targetPaymentId ? "※今月分と将来の自動生成分に反映されます" : ""} />
            <Grid container spacing={2} sx={{mt:0}}>
              <Grid item xs={6}><TextField label="支払日" type="number" fullWidth value={editRecurring.day} onChange={e=>setEditRecurring({...editRecurring, day:parseInt(e.target.value)})} /></Grid>
              <Grid item xs={6}><FormControl fullWidth><InputLabel>サイクル</InputLabel><Select value={editRecurring.cycle} label="サイクル" onChange={e=>setEditRecurring({...editRecurring, cycle:e.target.value})}><MenuItem value="every">毎月</MenuItem><MenuItem value="odd">奇数月</MenuItem><MenuItem value="even">偶数月</MenuItem></Select></FormControl></Grid>
@@ -323,12 +396,6 @@ export default function FinanceTab({
         <DialogActions><Button onClick={()=>setOpenRecurringDialog(false)}>キャンセル</Button><Button onClick={handleSaveRecurring} variant="contained">保存</Button></DialogActions>
       </Dialog>
 
-      <Dialog open={openFixEditDialog} onClose={()=>setOpenFixEditDialog(false)}>
-          <DialogTitle>今月の金額を修正</DialogTitle>
-          <DialogContent><TextField label="金額" type="number" fullWidth margin="dense" value={editFixedItem?.amount || ''} onChange={e=>setEditFixedItem({...editFixedItem, amount:e.target.value})} /></DialogContent>
-          <DialogActions><Button onClick={()=>setOpenFixEditDialog(false)}>キャンセル</Button><Button onClick={handleSaveFixedItem} variant="contained">修正</Button></DialogActions>
-      </Dialog>
-      
        <Dialog open={openCashDialog} onClose={()=>setOpenCashDialog(false)}>
         <DialogTitle>{editAccount.id ? '編集' : '銀行口座・財布を追加'}</DialogTitle>
         <DialogContent>

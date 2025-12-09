@@ -4,7 +4,7 @@ import {
   IconButton, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, 
   FormControl, InputLabel, Select, MenuItem, Checkbox, FormControlLabel, Chip, Divider, Grid 
 } from '@mui/material';
-import { Edit, Delete, Add } from '@mui/icons-material';
+import { Edit, Delete, Add, Person } from '@mui/icons-material';
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -18,6 +18,9 @@ export default function SettingsTab({
   const [rangeStart, setRangeStart] = useState('');
   const [rangeEnd, setRangeEnd] = useState('');
   const [selectedRangeJob, setSelectedRangeJob] = useState('');
+  
+  // メンバー追加用
+  const [newMemberName, setNewMemberName] = useState('');
 
   const handleRangeSubmit = () => {
     if(!rangeStart || !rangeEnd || !selectedRangeJob) {
@@ -30,6 +33,35 @@ export default function SettingsTab({
   const handleRangeDelete = () => {
     if(!rangeStart || !rangeEnd || !selectedRangeJob) return;
     if(window.confirm("本当に削除しますか？")) onDeleteRange(rangeStart, rangeEnd, selectedRangeJob);
+  };
+
+  // メンバー管理
+  const handleAddMember = () => {
+    if (!newMemberName) return;
+    const newMember = {
+        id: Date.now().toString(),
+        name: newMemberName,
+        color: '#' + Math.floor(Math.random()*16777215).toString(16)
+    };
+    onUpdateMembers([...members, newMember]);
+    setNewMemberName('');
+  };
+
+  const handleEditMember = (member) => {
+    const newName = prompt("メンバー名を変更", member.name);
+    if (newName && newName !== member.name) {
+        onUpdateMembers(members.map(m => m.id === member.id ? {...m, name: newName} : m));
+    }
+  };
+
+  const handleDeleteMember = (id) => {
+    if (id === 'me') {
+        alert("「自分」は削除できません。");
+        return;
+    }
+    if (window.confirm("このメンバーを削除しますか？\n※このメンバーに割り当てられた仕事やシフトがある場合、表示がおかしくなる可能性があります。")) {
+        onUpdateMembers(members.filter(m => m.id !== id));
+    }
   };
 
   return (
@@ -88,7 +120,6 @@ export default function SettingsTab({
                         } 
                       />
                       <ListItemSecondaryAction>
-                        {/* ★修正: ダイアログを開くのは親に任せる */}
                         <IconButton onClick={() => onEditJobRequest(job)}><Edit /></IconButton>
                         <IconButton onClick={() => onDeleteJob(job.id)}><Delete /></IconButton>
                       </ListItemSecondaryAction>
@@ -98,10 +129,41 @@ export default function SettingsTab({
                 );
             })}
           </List>
-          {/* ★修正: 新規追加も親に任せる */}
           <Button startIcon={<Add />} fullWidth variant="outlined" onClick={() => onAddJobRequest()}>
             新しい仕事を追加
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* ★復元: メンバー設定エリア */}
+      <Typography variant="h6" gutterBottom>👥 メンバー設定</Typography>
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+            <List dense>
+                {members.map(member => (
+                    <ListItem key={member.id}>
+                        <Box sx={{mr:2, display:'flex', alignItems:'center', justifyContent:'center', width:30, height:30, borderRadius:'50%', bgcolor:member.color || '#ccc', color:'#fff', fontWeight:'bold'}}>
+                           {member.name.charAt(0)}
+                        </Box>
+                        <ListItemText primary={member.name} secondary={member.id === 'me' ? 'デフォルト' : ''} />
+                        <ListItemSecondaryAction>
+                            <IconButton onClick={() => handleEditMember(member)}><Edit /></IconButton>
+                            <IconButton onClick={() => handleDeleteMember(member.id)} disabled={member.id === 'me'}><Delete /></IconButton>
+                        </ListItemSecondaryAction>
+                    </ListItem>
+                ))}
+            </List>
+            <Divider sx={{my:2}} />
+            <Box sx={{display:'flex', gap:1}}>
+                <TextField 
+                    label="新しいメンバー名" 
+                    size="small" 
+                    fullWidth 
+                    value={newMemberName} 
+                    onChange={(e) => setNewMemberName(e.target.value)}
+                />
+                <Button variant="contained" onClick={handleAddMember} disabled={!newMemberName}>追加</Button>
+            </Box>
         </CardContent>
       </Card>
     </Box>
