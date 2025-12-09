@@ -62,7 +62,6 @@ export const INITIAL_PAYMENT_TEMPLATES = [
 ];
 export const INITIAL_MEMBERS = [{ id: 'me', name: '自分', color: '#1976d2' }];
 
-// ★修正: デフォルトの定番在庫を追加
 export const INITIAL_SHOPPING = { 
   list: [], 
   stock: [
@@ -89,8 +88,15 @@ export const INITIAL_SETTINGS = {
   calcMode: 'realtime', 
   location: PREFECTURES[7], 
   targetLimit: 1030000,
+  targetMemberId: 'me', // ★追加: 扶養計算の対象者
   calcTiming: 'realtime', 
-  transferBase: 'next_month' 
+  transferBase: 'next_month',
+  // ★追加: プライバシー設定 (デフォルトは全てOFF)
+  privacy: {
+      shifts: false,
+      finance: false,
+      shopping: false
+  }
 };
 
 export const LINK_CATEGORIES = [

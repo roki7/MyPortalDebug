@@ -107,10 +107,30 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, []);
 
-  const isPremium = ['standard', 'couple', 'family'].includes(userProfile?.plan);
+  // ★修正: 権限フラグの定義
+  const plan = userProfile?.plan || 'free';
+  
+  // クラウド保存できるプラン (Standard, Couple, Family)
+  const canSaveCloud = ['standard', 'couple', 'family'].includes(plan);
+  
+  // グループ共有できるプラン (Couple, Family)
+  const canShareGroup = ['couple', 'family'].includes(plan);
 
   const value = {
-    currentUser, userProfile, login, logout, createGroup, joinGroup, kickMember, leaveGroup, isPremium, isOwner: userProfile?.role === 'owner'
+    currentUser, 
+    userProfile, 
+    login, 
+    logout, 
+    createGroup, 
+    joinGroup, 
+    kickMember, 
+    leaveGroup, 
+    isOwner: userProfile?.role === 'owner',
+    // 新しいフラグを公開
+    canSaveCloud,
+    canShareGroup,
+    // isPremium は「何らかの有料プランに入っている」という意味で残す
+    isPremium: canSaveCloud 
   };
 
   return (

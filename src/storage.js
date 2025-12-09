@@ -36,28 +36,40 @@ const cleanDataForLocal = (data) => {
   return clean;
 };
 
-// 保存処理
-export const saveData = async (user, fullData, groupId = null) => {
+// 引数に canSaveCloud を追加
+export const saveData = async (user, fullData, groupId = null, canSaveCloud = false) => {
   try {
     const safeData = sanitizeData(fullData);
     const localData = cleanDataForLocal(safeData);
+    // ローカル保存は常に実行
     localStorage.setItem(LOCAL_KEY, JSON.stringify(localData));
 
-    if (!user) return;
+    // ユーザーがいない、またはクラウド保存権限がない場合はここで終了
+    if (!user || !canSaveCloud) return;
 
     const batch = writeBatch(db);
     const userRef = doc(db, "users", user.uid, "private_data", "main");
     batch.set(userRef, safeData, { merge: true });
 
+    // グループ共有書き込み
     if (groupId) {
+      // ★修正: プライバシー設定を取得（なければデフォルトOFF）
+      const privacy = safeData.settings?.privacy || { shifts: false, finance: false, shopping: false };
+
       const groupRef = doc(db, "groups", groupId, "shared_data", user.uid);
       const sharedPayload = {
         uid: user.uid,
         userName: user.displayName || '名無し',
         updatedAt: new Date().toISOString(),
-        shifts: safeData.shifts || {},
-        shopping: safeData.shopping || {},
-        payments: (safeData.payments || []).filter(p => p.isShared),
+        // ★修正: プライバシー設定に基づいてデータをフィルタリング
+        shifts: privacy.shifts ? (safeData.shifts || {}) : {},
+        shopping: privacy.shopping ? (safeData.shopping || {}) : {},
+        payments: privacy.finance ? ((safeData.payments || []).filter(p => p.isShared)) : [],
+        
+        // jobsはshiftsの表示に必須のため、シフト共有ONなら送る（または最低限の情報のみ送る実装も可だが今回はそのまま）
+        // ただしジョブ定義自体に個人情報は少ないと想定
+        jobs: privacy.shifts ? (safeData.jobs || []) : [],
+        
         attachments: [] 
       };
       batch.set(groupRef, sanitizeData(sharedPayload), { merge: true });
@@ -69,12 +81,14 @@ export const saveData = async (user, fullData, groupId = null) => {
   }
 };
 
-// 読み込み・移行処理
-export const loadData = async (user) => {
-  if (!user) {
+// 引数に canSaveCloud を追加
+export const loadData = async (user, canSaveCloud = false) => {
+  // ユーザーがいない、またはクラウド権限がない場合はローカルのみ読み込む
+  if (!user || !canSaveCloud) {
     const local = localStorage.getItem(LOCAL_KEY);
     return { personal: local ? JSON.parse(local) : null, shared: [] };
   }
+
   try {
     const privateRef = doc(db, "users", user.uid, "private_data", "main");
     const snap = await getDoc(privateRef);

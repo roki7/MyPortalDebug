@@ -9,7 +9,7 @@ import {
 import { 
   CalendarMonth, AccountBalance, Settings, EmojiEvents, ArrowBack, ArrowForward, 
   ShoppingCart, Assessment, Login, CloudDone, CloudOff, MoreHoriz, Apps, 
-  Groups, Person
+  Groups, Person, BeachAccess, Close, LocationOn
 } from '@mui/icons-material';
 import { format, addMonths, subMonths, parse } from 'date-fns';
 import ShiftEditModal from './components/ShiftEditModal'; 
@@ -42,7 +42,8 @@ import ReloadPrompt from './components/ReloadPrompt';
 import MyLinksTab from './components/MyLinksTab';
 
 export default function MainApp() {
-  const { currentUser, isPremium, userProfile, login, logout } = useAuth();
+  // ★修正: canSaveCloud, canShareGroup を取得
+  const { currentUser, isPremium, userProfile, login, logout, canSaveCloud, canShareGroup } = useAuth();
   const [isLoaded, setIsLoaded] = useState(false);
   const [tabIndex, setTabIndex] = useState(0); 
   const [openDrawer, setOpenDrawer] = useState(false);
@@ -87,7 +88,8 @@ export default function MainApp() {
   useEffect(() => {
     const init = async () => {
       try {
-        const data = await loadData(currentUser);
+        // ★修正: loadData に canSaveCloud を渡す
+        const data = await loadData(currentUser, canSaveCloud);
         const d = data?.personal || {};
         setSettings(d.settings || INITIAL_SETTINGS);
         setMembers(d.members || INITIAL_MEMBERS);
@@ -105,7 +107,7 @@ export default function MainApp() {
       } catch (e) { console.error(e); setIsLoaded(true); }
     };
     init();
-  }, [currentUser, userProfile]);
+  }, [currentUser, userProfile, canSaveCloud]); // canSaveCloud 変更時にも再読み込み（プラン変更対応）
 
   useEffect(() => {
       if (userProfile?.groupId && (viewMode === 'shared' || isHousehold)) {
@@ -117,24 +119,22 @@ export default function MainApp() {
   useEffect(() => {
     if (!isLoaded) return;
     const timer = setTimeout(() => {
+      // ★修正: saveData に canSaveCloud を渡す
       saveData(currentUser, { 
         settings, members, jobs, shifts, accounts, recurring, 
         payments, templates, shopping, myLinks, linkCategories 
-      }, userProfile?.groupId); 
+      }, userProfile?.groupId, canSaveCloud); 
     }, 1000);
     return () => clearTimeout(timer);
-  }, [settings, members, jobs, shifts, accounts, recurring, payments, templates, shopping, myLinks, linkCategories, currentUser, isLoaded, userProfile]);
+  }, [settings, members, jobs, shifts, accounts, recurring, payments, templates, shopping, myLinks, linkCategories, currentUser, isLoaded, userProfile, canSaveCloud]);
 
-  // ★ useMemo を使用して無限ループを防止しつつマージデータを生成
   const fullMergedData = useMemo(() => {
       return mergeSharedData({ uid: currentUser?.uid, shifts, jobs }, sharedDocs);
   }, [currentUser, shifts, jobs, sharedDocs]);
 
-  // カレンダー表示用
   const displayShifts = viewMode === 'shared' ? fullMergedData.shifts : shifts;
   const displayJobs = viewMode === 'shared' ? fullMergedData.jobs : jobs;
 
-  // 計算用: 確定・見込み計算には常に全データ(fullMergedData)を渡す
   const calculationShifts = fullMergedData.shifts;
   const calculationJobs = fullMergedData.jobs;
   
@@ -166,8 +166,6 @@ export default function MainApp() {
   }, []);
 
   useEffect(() => {
-    // リアルタイム収支
-    // isHouseholdがONなら全シフト、OFFなら自分のシフト
     const targetShifts = isHousehold 
         ? fullMergedData.shifts 
         : filterShiftsForUser(fullMergedData.shifts, fullMergedData.jobs, 'me');
@@ -181,31 +179,16 @@ export default function MainApp() {
 
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
-  const handleOpenJobAdd = () => {
-    setEditingJob(null); 
-    setJobDialogOpen(true);
-  };
+  const handleDateChange = (e) => { if(e.target.value) setCurrentDate(parse(e.target.value, 'yyyy-MM', new Date())); };
 
-  const handleOpenJobEdit = (job) => {
-    setEditingJob(job); 
-    setJobDialogOpen(true);
-  };
-
-  const handleSaveJob = (jobData) => {
-    if (jobData.id) {
-        handleUpdateJob(jobData);
-    } else {
-        handleAddJob({ ...jobData, id: Date.now() });
-    }
-  };
+  const handleOpenJobAdd = () => { setEditingJob(null); setJobDialogOpen(true); };
+  const handleOpenJobEdit = (job) => { setEditingJob(job); setJobDialogOpen(true); };
+  const handleSaveJob = (jobData) => { if (jobData.id) handleUpdateJob(jobData); else handleAddJob({ ...jobData, id: Date.now() }); };
 
   const handleUpdateShiftFull = (updatedShift) => {
       if (!selectedDate) return;
       const dateStr = format(selectedDate, 'yyyy-MM-dd');
-      setShifts({
-          ...shifts,
-          [dateStr]: shifts[dateStr].map(s => s.id === updatedShift.id ? updatedShift : s)
-      });
+      setShifts({ ...shifts, [dateStr]: shifts[dateStr].map(s => s.id === updatedShift.id ? updatedShift : s) });
       setEditShift(null);
   };
   const handleAddJob = (job) => setJobs([...jobs, job]);
@@ -228,46 +211,12 @@ export default function MainApp() {
   const handleUpdatePayment = (updatedPay) => setPayments(payments.map(p => p.id === updatedPay.id ? updatedPay : p));
   const handleUpdateStock = (newStockList) => { setShopping({ ...shopping, stock: newStockList }); };
   const handleGenerateAnnualShifts = (year) => { if (jobs.length === 0) { alert("仕事を登録してください"); return; } if (!window.confirm(`${year}年のシフトを一括生成しますか？`)) return; const newShifts = generateShiftsForYear(year, jobs); const merged = { ...shifts }; Object.keys(newShifts).forEach(d => merged[d] = [...(merged[d]||[]), ...newShifts[d]]); setShifts(merged); alert("完了"); };
-  
-  const handleGenerateRange = (start, end, jobId) => { 
-      const targetJob = jobs.find(j => String(j.id) === String(jobId)); 
-      if (!targetJob) { alert("仕事が見つかりません"); return; }
-      const newShifts = generateShiftsRange(start, end, targetJob, targetJob.skipHolidays); 
-      const merged = { ...shifts }; 
-      Object.keys(newShifts).forEach(d => merged[d] = [...(merged[d]||[]), ...newShifts[d]]); 
-      setShifts(merged); 
-      alert("完了しました"); 
-  };
-  
+  const handleGenerateRange = (start, end, jobId) => { const targetJob = jobs.find(j => String(j.id) === String(jobId)); if (!targetJob) { alert("仕事が見つかりません"); return; } const newShifts = generateShiftsRange(start, end, targetJob, targetJob.skipHolidays); const merged = { ...shifts }; Object.keys(newShifts).forEach(d => merged[d] = [...(merged[d]||[]), ...newShifts[d]]); setShifts(merged); alert("完了しました"); };
   const handleDeleteRange = (start, end, jobId) => { setShifts(deleteShiftsRange(shifts, start, end, parseInt(jobId))); alert("削除"); };
-  
-  const handleAddShift = (job, manualAmount = 0, customPayDate = '', start = '', end = '') => { 
-      if (!selectedDate) return; 
-      const dateStr = format(selectedDate, 'yyyy-MM-dd'); 
-      let newShift = { 
-          id: Date.now(), jobId: job.id, status: 'normal', amount: manualAmount, 
-          start: start || job.defaultStart || '09:00', end: end || job.defaultEnd || '17:00', 
-          breakTime: job.breakTime || 0, isShared: viewMode === 'shared', customPayDate: customPayDate 
-      }; 
-      if (job.id === 'custom') newShift.customName = job.name;
-      else if (job.type === 'manual' && !manualAmount) { const amt = prompt("金額", "0"); if(amt) newShift.amount = parseInt(amt); } 
-      const current = shifts[dateStr] || []; 
-      setShifts({ ...shifts, [dateStr]: [...current, newShift] }); 
-      setOpenMenu(false); 
-  };
-  
+  const handleAddShift = (job, manualAmount = 0, customPayDate = '', start = '', end = '') => { if (!selectedDate) return; const dateStr = format(selectedDate, 'yyyy-MM-dd'); let newShift = { id: Date.now(), jobId: job.id, status: 'normal', amount: manualAmount, start: start || job.defaultStart || '09:00', end: end || job.defaultEnd || '17:00', breakTime: job.breakTime || 0, isShared: viewMode === 'shared', customPayDate: customPayDate }; if (job.id === 'custom') newShift.customName = job.name; else if (job.type === 'manual' && !manualAmount) { const amt = prompt("金額", "0"); if(amt) newShift.amount = parseInt(amt); } const current = shifts[dateStr] || []; setShifts({ ...shifts, [dateStr]: [...current, newShift] }); setOpenMenu(false); };
   const handleSaveShiftTime = () => { if (!editShift || !selectedDate) return; const dateStr = format(selectedDate, 'yyyy-MM-dd'); setShifts({ ...shifts, [dateStr]: shifts[dateStr].map(s => s.id === editShift.id ? editShift : s) }); setEditShift(null); };
   const handleDeleteShift = () => { if (!editShift || !selectedDate) return; const dateStr = format(selectedDate, 'yyyy-MM-dd'); setShifts({ ...shifts, [dateStr]: shifts[dateStr].filter(s => s.id !== editShift.id) }); setEditShift(null); };
-  
-  const handleUpdateShiftStatus = (status) => { 
-      if (!editShift || !selectedDate) return; 
-      const newStatus = editShift.status === status ? 'normal' : status;
-      const updated = { ...editShift, status: newStatus }; 
-      const dateStr = format(selectedDate, 'yyyy-MM-dd'); 
-      setShifts({ ...shifts, [dateStr]: shifts[dateStr].map(s => s.id === editShift.id ? updated : s) }); 
-      setEditShift(updated); 
-  };
-
+  const handleUpdateShiftStatus = (status) => { if (!editShift || !selectedDate) return; const newStatus = editShift.status === status ? 'normal' : status; const updated = { ...editShift, status: newStatus }; const dateStr = format(selectedDate, 'yyyy-MM-dd'); setShifts({ ...shifts, [dateStr]: shifts[dateStr].map(s => s.id === editShift.id ? updated : s) }); setEditShift(updated); };
   const handleFullImport = (importedData) => { if (!importedData) return; if (window.confirm('データを復元しますか？')) { setSettings(importedData.settings||settings); setMembers(importedData.members||members); setJobs(importedData.jobs||jobs); setShifts(importedData.shifts||shifts); setAccounts(importedData.accounts||accounts); setRecurring(importedData.recurring||recurring); setPayments(importedData.payments||payments); setTemplates(importedData.templates||templates); setShopping(importedData.shopping||shopping); setMyLinks(importedData.myLinks||myLinks); setLinkCategories(importedData.linkCategories||linkCategories); alert('復元しました'); } };
 
   const LoginStatus = () => { if (currentUser) return (<IconButton onClick={() => { if(window.confirm("ログアウト？")) logout(); }} size="small"><Avatar sx={{ width: 24, height: 24, bgcolor: 'orange' }} src={currentUser.photoURL} /></IconButton>); return (<Button onClick={login} size="small" variant="contained" color="secondary" startIcon={<Login />} sx={{ fontSize: 10 }}>ログイン</Button>); };
@@ -283,7 +232,8 @@ export default function MainApp() {
       <Dialog open={kickDialog}><DialogTitle>通知</DialogTitle><DialogContent>グループから削除されました。</DialogContent><DialogActions><Button onClick={handleKickConfirm}>OK</Button></DialogActions></Dialog>
       
       <Paper elevation={3} sx={{ p: 2, bgcolor: viewMode==='shared'?'#1565c0':'#212121', color: 'white', borderRadius: '0 0 16px 16px', position:'sticky', top:0, zIndex:10 }}>
-        {(isPremium && userProfile?.groupId) && (
+        {/* ★修正: 共有ボタンの表示条件を canShareGroup に変更 */}
+        {(canShareGroup && userProfile?.groupId) && (
             <Box sx={{display:'flex', justifyContent:'center', mb:1}}>
                 <Button variant={viewMode==='personal'?'contained':'text'} onClick={()=>setViewMode('personal')} size="small" startIcon={<Person/>} sx={{color:'white', bgcolor:viewMode==='personal'?'rgba(255,255,255,0.2)':'transparent', borderRadius:'20px 0 0 20px'}}>個人</Button>
                 <Button variant={viewMode==='shared'?'contained':'text'} onClick={()=>setViewMode('shared')} size="small" startIcon={<Groups/>} sx={{color:'white', bgcolor:viewMode==='shared'?'rgba(255,255,255,0.2)':'transparent', borderRadius:'0 20px 20px 0'}}>共有</Button>
@@ -293,7 +243,8 @@ export default function MainApp() {
            <IconButton onClick={handlePrevMonth} size="small"><ArrowBack sx={{ color: 'white' }} /></IconButton>
            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>{format(currentDate, 'yyyy年 M月')}</Typography>
            <Box sx={{ display:'flex', alignItems:'center', gap: 1 }}>
-             <Chip icon={currentUser && isPremium ? <CloudDone sx={{color:'white !important'}}/> : <CloudOff sx={{color:'gray !important'}}/>} label={settings.calcMode === 'realtime' ? '⏱' : '✅'} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', pl:0.5 }} />
+             {/* クラウドアイコンの表示も canSaveCloud に合わせる */}
+             <Chip icon={canSaveCloud ? <CloudDone sx={{color:'white !important'}}/> : <CloudOff sx={{color:'gray !important'}}/>} label={settings.calcMode === 'realtime' ? '⏱' : '✅'} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', pl:0.5 }} />
              <LoginStatus />
              <IconButton onClick={handleNextMonth} size="small" sx={{ ml: -0.5 }}><ArrowForward sx={{ color: 'white' }} /></IconButton>
            </Box>
@@ -368,11 +319,20 @@ export default function MainApp() {
         {tabIndex === 4 && <ReportTab annualIncome={currentAnnualIncome} summary={annualSummary} targetLimit={settings.targetLimit} accounts={accounts} totalFixedCost={totalFixedCost} />}
         {tabIndex === 5 && <MotivationTab currentEarnings={earnings.personalFixed} fixedCost={totalFixedCost} />}
         
-        {tabIndex === 6 && <SettingsTab jobs={jobs} settings={settings} members={members} onAddJob={handleAddJob} 
-        onUpdateJob={handleUpdateJob} onDeleteJob={handleDeleteJob} onUpdateSettings={setSettings} onGenerateAnnualShifts={handleGenerateAnnualShifts} 
-        onGenerateRange={handleGenerateRange} onDeleteRange={handleDeleteRange} onUpdateMembers={setMembers} fullData={{ settings, members, jobs, shifts, accounts, recurring, payments, templates, shopping, myLinks, linkCategories }} 
-        onImportData={handleFullImport} onEditJobRequest={handleOpenJobEdit}
-        onAddJobRequest={handleOpenJobAdd}/>}
+        {tabIndex === 6 && <SettingsTab 
+            jobs={jobs} settings={settings} members={members} 
+            onAddJob={handleAddJob} onUpdateJob={handleUpdateJob} onDeleteJob={handleDeleteJob} 
+            onUpdateSettings={setSettings} 
+            onGenerateAnnualShifts={handleGenerateAnnualShifts} 
+            onGenerateRange={handleGenerateRange} onDeleteRange={handleDeleteRange} 
+            onUpdateMembers={setMembers} 
+            fullData={{ settings, members, jobs, shifts, accounts, recurring, payments, templates, shopping, myLinks, linkCategories }} 
+            onImportData={handleFullImport} 
+            onEditJobRequest={handleOpenJobEdit} 
+            onAddJobRequest={handleOpenJobAdd}
+            // ★追加: 共有データを渡す
+            sharedDocs={sharedDocs}
+        />}
       </Box>
 
       {/* 以下省略（変更なし） */}
@@ -382,7 +342,7 @@ export default function MainApp() {
         </Tabs>
       </Paper>
 
-      <Fab color="secondary" sx={{ position: 'fixed', bottom: 'calc(60px + env(safe-area-inset-bottom))', right: 16, zIndex: 100 }} onClick={() => setOpenDrawer(true)}><MoreHoriz /></Fab>
+      <Fab color="secondary" sx={{ position: 'fixed', bottom: 'calc(120px + env(safe-area-inset-bottom))', right: 16, zIndex: 100 }} onClick={() => setOpenDrawer(true)}><MoreHoriz /></Fab>
       <Drawer anchor="bottom" open={openDrawer} onClose={() => setOpenDrawer(false)} PaperProps={{ sx: { borderRadius: '16px 16px 0 0', pb: 'env(safe-area-inset-bottom)' } }}>
           <Box sx={{ p: 2 }}>
               <List>
@@ -428,6 +388,7 @@ export default function MainApp() {
           members={members} 
           onSave={handleSaveJob} 
       />
+      <ReloadPrompt />
     </Container>
   );
 }

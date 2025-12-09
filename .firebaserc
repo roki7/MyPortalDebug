@@ -1,5 +1,9 @@
 {
   "projects": {
-    "default": "myportal-7b33f"
-  }
+    "default": "myportal-7b33f",
+    "dev": "myportalone-dev",
+    "prod": "myportal-7b33f"
+  },
+  "targets": {},
+  "etags": {}
 }
