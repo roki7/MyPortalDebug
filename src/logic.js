@@ -4,11 +4,14 @@ import { isHoliday } from 'holiday-jp';
 
 // 給与の支払日を計算
 const getPayDateForShift = (shiftDate, job, customPayDate) => {
-    // 1. 手動設定
+    // 1. 手動設定がある場合はそれを優先
     if (customPayDate) return new Date(customPayDate);
 
-    // 2. 仕事設定なし（即日扱い）
-    if (!job) return new Date(shiftDate);
+    // 2. 仕事設定なし（手入力）の場合
+    // ★修正: 未入力なら「シフトの翌月」とする（画面の表記に合わせる）
+    if (!job) {
+        return addMonths(new Date(shiftDate), 1);
+    }
 
     // 3. 仕事設定に基づく計算
     const workDate = new Date(shiftDate);
@@ -67,9 +70,13 @@ export const calculateMonthlyEarnings = (shifts, jobs, currentDate) => {
           }
 
           // --- 2. 給与の計算 (振込日ベース) ---
+          // ★ここで「振込日」を計算します。
+          // 手入力(jobなし)の場合は、上で修正した通り「翌月」が返ってきます。
+          // 通常の仕事(jobあり)の場合は、設定に基づいて（例:翌月25日）が返ってきます。
           const payDate = getPayDateForShift(dateStr, job, shift.customPayDate);
 
           // 表示中の月と「給料日」が同じなら金額計算
+          // ※ここが「振込ベース」の肝です。12月稼働でも1月振込なら、1月の画面に表示されます。
           if (isSameMonth(payDate, currentDate)) {
               let amount = 0;
               
@@ -116,7 +123,8 @@ export const calculateMonthlyEarnings = (shifts, jobs, currentDate) => {
   };
 };
 
-// 年収計算
+// ... (以下、他の関数は変更なしですが、一貫性のため再掲します)
+
 export const calculateAnnualIncome = (shifts, jobs, currentDate) => {
     let total = 0;
     const yearStart = startOfYear(currentDate);
@@ -149,7 +157,6 @@ export const calculateAnnualIncome = (shifts, jobs, currentDate) => {
     return total;
 };
 
-// サマリー生成
 export const getAnnualSummary = (shifts, jobs, currentDate) => {
     const summary = {};
     const yearStart = startOfYear(currentDate);
@@ -184,7 +191,6 @@ export const getAnnualSummary = (shifts, jobs, currentDate) => {
     return Object.keys(summary).map(name => ({ name, value: summary[name] }));
 };
 
-// 期間指定の一括生成
 export const generateShiftsRange = (startDate, endDate, job, skipHolidays) => {
   const shifts = {};
   const start = new Date(startDate);
@@ -209,7 +215,6 @@ export const generateShiftsRange = (startDate, endDate, job, skipHolidays) => {
   return shifts;
 };
 
-// 年間一括生成
 export const generateShiftsForYear = (year, jobs) => {
     const shifts = {};
     const start = startOfYear(new Date(year, 0, 1));

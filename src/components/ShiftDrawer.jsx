@@ -16,9 +16,11 @@ export default function ShiftDrawer({ open, onClose, jobs, members, selectedDate
   // 単発用State
   const [customName, setCustomName] = useState('');
   const [customAmount, setCustomAmount] = useState('');
+  
+  // ★修正: デフォルトをOFF(false)に変更
   const [customStart, setCustomStart] = useState('09:00');
   const [customEnd, setCustomEnd] = useState('17:00');
-  const [hasTime, setHasTime] = useState(true);
+  const [hasTime, setHasTime] = useState(false);
 
   const dateStr = selectedDate ? format(selectedDate, 'M月d日') : '';
 
@@ -30,7 +32,7 @@ export default function ShiftDrawer({ open, onClose, jobs, members, selectedDate
       setCustomAmount('');
       setCustomStart('09:00');
       setCustomEnd('17:00');
-      setHasTime(true);
+      setHasTime(false); // ★ここもfalseにリセット
     }
   }, [open]);
 
@@ -150,7 +152,8 @@ export default function ShiftDrawer({ open, onClose, jobs, members, selectedDate
             value={customPayDate} 
             onChange={(e) => setCustomPayDate(e.target.value)} 
             sx={{ mb: 3 }}
-            helperText="未入力の場合は当月扱いになります"
+            // ★修正: 文言を「翌月扱い」に変更
+            helperText="未入力の場合は翌月扱いになります"
           />
 
           <Button 
