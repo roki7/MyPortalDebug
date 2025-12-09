@@ -85,13 +85,22 @@ const calculateDailyRate = (targetDateStr, job, allShifts) => {
     if (count === 0) return 0;
     return Math.floor(salary / count);
 };
-const calculateShiftAmount = (shift, job) => {
+const calculateShiftAmount = (shift, job, allShifts, dateStr) => {
+    // 1. 手動修正モード (Manual Override)
+    if (shift.isManualOverride) {
+        return parseInt(shift.manualAmount || 0);
+    }
+    
+    // 2. レガシーな手入力 (amountプロパティ)
     if (shift.amount) return parseInt(shift.amount);
+    
     if (!job) return 0;
     
+    // 3. 仕事設定ごとの計算
     if (job.type === 'fixed') {
         return parseInt(job.value);
-    } else if (job.type === 'hourly' && shift.start && shift.end) {
+    } 
+    else if (job.type === 'hourly' && shift.start && shift.end) {
         const s = new Date(`1970-01-01T${shift.start}`);
         const e = new Date(`1970-01-01T${shift.end}`);
         const breakTime = shift.breakTime !== undefined 
@@ -102,6 +111,23 @@ const calculateShiftAmount = (shift, job) => {
         if (minutes < 0) minutes = 0;
         return Math.floor((minutes / 60) * parseInt(job.value));
     }
+    else if (job.type === 'monthly') {
+        // 月給計算: 日割り単価を取得
+        // (計算に必要な allShifts と dateStr が渡されていない場合は0)
+        if (!allShifts || !dateStr) return 0;
+        
+        const dailyRate = calculateDailyRate(dateStr, job, allShifts);
+        
+        if (shift.status === 'early_leave') {
+            const deduction = job.deductionEarlyLeave ? parseInt(job.deductionEarlyLeave) : 0;
+            return dailyRate - deduction;
+        }
+        return dailyRate;
+    }
+    else if (job.type === 'commission') {
+        return parseInt(shift.commissionAmount || 0);
+    }
+
     return 0;
 };
 
@@ -272,7 +298,9 @@ export const calculateAnnualIncome = (shifts, jobs, currentDate) => {
             const payDate = getPayDateForShift(dateStr, job, shift.customPayDate);
 
             if (payDate >= yearStart && payDate <= yearEnd) {
-                const amount = calculateShiftAmount(shift, job);
+                // ★修正: 引数 (shifts, dateStr) を追加
+                const amount = calculateShiftAmount(shift, job, shifts, dateStr);
+                
                 household += amount;
                 if (isMyShift) personal += amount;
             }
@@ -295,7 +323,8 @@ export const getAnnualSummary = (shifts, jobs, currentDate) => {
             if (payDate >= yearStart && payDate <= yearEnd) {
                 const name = shift.customName || job?.name || 'その他';
                 if(!summary[name]) summary[name] = 0;
-                summary[name] += calculateShiftAmount(shift, job);
+                // ★修正: 引数 (shifts, dateStr) を追加
+                summary[name] += calculateShiftAmount(shift, job, shifts, dateStr);
             }
         });
     });
@@ -383,10 +412,10 @@ export const calculateCurrentEarnings = (shifts, jobs, currentViewDate, now, set
       
       const payDate = getPayDateForShift(dateStr, job, shift.customPayDate);
 
-      // 表示対象月と一致しなければスキップ
       if (payDate.getFullYear() !== targetYear || payDate.getMonth() !== targetMonth) return;
 
-      const amount = calculateShiftAmount(shift, job);
+      // ★修正: 引数 (shifts, dateStr) を追加
+      const amount = calculateShiftAmount(shift, job, shifts, dateStr);
 
       // 手動シフトの即時反映
       if (!shift.start || !shift.end) {

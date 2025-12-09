@@ -1,15 +1,18 @@
-// src/components/ShiftEditModal.jsx (新規作成または既存の編集モーダルを置き換え)
+// src/components/ShiftEditModal.jsx
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, FormControlLabel, Switch, Box, Typography, Divider } from '@mui/material';
+import { 
+  Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, 
+  FormControlLabel, Switch, Box, Divider 
+} from '@mui/material';
 
 export default function ShiftEditModal({ open, onClose, shift, job, onUpdate, onDelete }) {
   const [isManual, setIsManual] = useState(false);
   const [manualAmount, setManualAmount] = useState('');
   const [manualDate, setManualDate] = useState('');
   
-  // 既存の編集用State
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [breakTime, setBreakTime] = useState(''); // 休憩時間
   const [status, setStatus] = useState('attended'); // attended, absence, early_leave
 
   useEffect(() => {
@@ -19,6 +22,8 @@ export default function ShiftEditModal({ open, onClose, shift, job, onUpdate, on
       setManualDate(shift.manualTransferDate || '');
       setStartTime(shift.start || job?.defaultStart || '');
       setEndTime(shift.end || job?.defaultEnd || '');
+      // 休憩時間: シフトに保存されていればそれ、なければ仕事設定のデフォルト、なければ0
+      setBreakTime(shift.breakTime !== undefined ? shift.breakTime : (job?.breakTime || 0));
       setStatus(shift.status || 'attended');
     }
   }, [shift, job]);
@@ -28,6 +33,7 @@ export default function ShiftEditModal({ open, onClose, shift, job, onUpdate, on
       ...shift,
       start: startTime,
       end: endTime,
+      breakTime: parseInt(breakTime) || 0,
       status: status,
       isManualOverride: isManual,
       // 手動モードなら入力値を保存、そうでなければクリア
@@ -41,6 +47,9 @@ export default function ShiftEditModal({ open, onClose, shift, job, onUpdate, on
   };
 
   if (!shift) return null;
+
+  // 早退・欠勤時は時間をグレーアウトする判定
+  const isTimeDisabled = status === 'early_leave' || status === 'absence';
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
@@ -59,21 +68,43 @@ export default function ShiftEditModal({ open, onClose, shift, job, onUpdate, on
                 onClick={() => setStatus('absence')} color="error">欠勤</Button>
         </Box>
 
-        {/* 時間変更（通常時のみ） */}
-        {!isManual && job?.type === 'hourly' && (
-            <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-                <TextField label="開始" type="time" fullWidth InputLabelProps={{ shrink: true }} value={startTime} onChange={e=>setStartTime(e.target.value)} />
-                <TextField label="終了" type="time" fullWidth InputLabelProps={{ shrink: true }} value={endTime} onChange={e=>setEndTime(e.target.value)} />
-            </Box>
+        {/* 時間変更（時給制の場合のみ表示、手動ONでも消さない） */}
+        {job?.type === 'hourly' && (
+            <>
+                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                    <TextField 
+                        label="開始" type="time" fullWidth InputLabelProps={{ shrink: true }} 
+                        value={startTime} onChange={e=>setStartTime(e.target.value)} 
+                        disabled={isTimeDisabled} // 早退・欠勤時は入力不可
+                    />
+                    <TextField 
+                        label="終了" type="time" fullWidth InputLabelProps={{ shrink: true }} 
+                        value={endTime} onChange={e=>setEndTime(e.target.value)} 
+                        disabled={isTimeDisabled} // 早退・欠勤時は入力不可
+                    />
+                </Box>
+                {/* 休憩時間の復活 */}
+                <TextField 
+                    label="休憩 (分)" 
+                    type="number" 
+                    fullWidth 
+                    value={breakTime}
+                    onChange={(e)=>setBreakTime(e.target.value)}
+                    disabled={isTimeDisabled} // 早退・欠勤時は入力不可
+                    placeholder="例: 60"
+                    autoComplete="off"
+                    sx={{ mb: 2 }}
+                />
+            </>
         )}
 
         <Divider sx={{ my: 2 }} />
 
-        {/* ★手動修正スイッチ (画面左下あたりをイメージ) */}
+        {/* 手動修正スイッチエリア */}
         <Box sx={{ bgcolor: '#fff3e0', p: 2, borderRadius: 2 }}>
             <FormControlLabel 
                 control={<Switch checked={isManual} onChange={(e) => setIsManual(e.target.checked)} />} 
-                label="金額・振込日を強制修正" 
+                label="選択シフトのみ修正" 
                 sx={{ mb: 1, display: 'block' }}
             />
             
@@ -81,11 +112,11 @@ export default function ShiftEditModal({ open, onClose, shift, job, onUpdate, on
             {isManual && (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <TextField 
-                        label="金額 (強制上書き)" 
+                        label="金額" 
                         type="number" 
                         value={manualAmount} 
                         onChange={(e) => setManualAmount(e.target.value)} 
-                        helperText="自動計算を無視してこの金額にします"
+                        helperText="今回のみ設定済みの金額から変更した金額で計算されます"
                     />
                     <TextField 
                         label="振込予定日" 

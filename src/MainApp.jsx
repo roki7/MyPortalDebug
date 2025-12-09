@@ -12,7 +12,8 @@ import {
   Groups, Person
 } from '@mui/icons-material';
 import { format, addMonths, subMonths, parse } from 'date-fns';
-
+import ShiftEditModal from './components/ShiftEditModal'; 
+import JobEditDialog from './components/JobEditDialog';
 import { 
   INITIAL_JOBS, INITIAL_ACCOUNTS, INITIAL_RECURRING, INITIAL_SETTINGS, 
   INITIAL_PAYMENT_TEMPLATES, INITIAL_MEMBERS, INITIAL_SHOPPING, INITIAL_MY_LINKS, 
@@ -49,6 +50,10 @@ export default function MainApp() {
 
   // 世帯合算表示スイッチ
   const [isHousehold, setIsHousehold] = useState(false);
+  
+  // 仕事編集ダイアログの状態管理
+  const [jobDialogOpen, setJobDialogOpen] = useState(false);
+  const [editingJob, setEditingJob] = useState(null);
 
   const [settings, setSettings] = useState(INITIAL_SETTINGS);
   const [members, setMembers] = useState(INITIAL_MEMBERS);
@@ -170,6 +175,35 @@ export default function MainApp() {
 
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
+  const handleOpenJobAdd = () => {
+    setEditingJob(null); // 
+    setJobDialogOpen(true);
+  };
+
+  const handleOpenJobEdit = (job) => {
+    setEditingJob(job); // 
+    setJobDialogOpen(true);
+  };
+
+  // ★追加: 仕事保存のハンドラ (新規・更新の振り分け)
+  const handleSaveJob = (jobData) => {
+    if (jobData.id) {
+        handleUpdateJob(jobData);
+    } else {
+        handleAddJob({ ...jobData, id: Date.now() });
+    }
+  };
+
+  // ★追加: シフト更新ハンドラ (ShiftEditModalからの返り値を受け取る)
+  const handleUpdateShiftFull = (updatedShift) => {
+      if (!selectedDate) return;
+      const dateStr = format(selectedDate, 'yyyy-MM-dd');
+      setShifts({
+          ...shifts,
+          [dateStr]: shifts[dateStr].map(s => s.id === updatedShift.id ? updatedShift : s)
+      });
+      setEditShift(null);
+  };
   const handleAddJob = (job) => setJobs([...jobs, job]);
   const handleUpdateJob = (updatedJob) => setJobs(jobs.map(j => j.id === updatedJob.id ? updatedJob : j));
   const handleDeleteJob = (id) => setJobs(jobs.filter(j => j.id !== id));
@@ -301,15 +335,14 @@ export default function MainApp() {
                 onDateClick={(d) => { setSelectedDate(d); setOpenMenu(true); }} 
                 onShiftClick={(s, d) => { 
                     setSelectedDate(d); 
-                    const job = displayJobs.find(j => String(j.id) === String(s.jobId)); // ★修正: ここも統合ジョブから検索
+                    // ここでモーダル用のデータを準備
+                    const job = jobs.find(j => String(j.id) === String(s.jobId));
                     let initBreak = s.breakTime;
                     if (initBreak === undefined || initBreak === null || initBreak === '') {
                         initBreak = job?.breakTime || 0;
                     }
                     setEditShift({ ...s, breakTime: initBreak });
                 }} 
-                onPrevMonth={handlePrevMonth} 
-                onNextMonth={handleNextMonth} 
             />
         )}
         
@@ -334,7 +367,11 @@ export default function MainApp() {
         {tabIndex === 5 && <MotivationTab currentEarnings={earnings.personalFixed} fixedCost={totalFixedCost} />}
         
         {/* 設定タブは「自分の仕事」を編集する場所なので、localのjobsを渡したままにする */}
-        {tabIndex === 6 && <SettingsTab jobs={jobs} settings={settings} members={members} onAddJob={handleAddJob} onUpdateJob={handleUpdateJob} onDeleteJob={handleDeleteJob} onUpdateSettings={setSettings} onGenerateAnnualShifts={handleGenerateAnnualShifts} onGenerateRange={handleGenerateRange} onDeleteRange={handleDeleteRange} onUpdateMembers={setMembers} fullData={{ settings, members, jobs, shifts, accounts, recurring, payments, templates, shopping, myLinks, linkCategories }} onImportData={handleFullImport} />}
+        {tabIndex === 6 && <SettingsTab jobs={jobs} settings={settings} members={members} onAddJob={handleAddJob} 
+        onUpdateJob={handleUpdateJob} onDeleteJob={handleDeleteJob} onUpdateSettings={setSettings} onGenerateAnnualShifts={handleGenerateAnnualShifts} 
+        onGenerateRange={handleGenerateRange} onDeleteRange={handleDeleteRange} onUpdateMembers={setMembers} fullData={{ settings, members, jobs, shifts, accounts, recurring, payments, templates, shopping, myLinks, linkCategories }} 
+        onImportData={handleFullImport} onEditJobRequest={handleOpenJobEdit}
+        onAddJobRequest={handleOpenJobAdd}/>}
       </Box>
 
       {/* 以下省略（変更なし） */}
@@ -361,85 +398,39 @@ export default function MainApp() {
           </Box>
       </Drawer>
 
-      <ShiftDrawer open={openMenu} onClose={() => setOpenMenu(false)} jobs={jobs} members={members} selectedDate={selectedDate} onAddShift={handleAddShift} />
+     <ShiftDrawer 
+          open={openMenu} 
+          onClose={() => setOpenMenu(false)} 
+          jobs={jobs} 
+          members={members} 
+          selectedDate={selectedDate} 
+          onAddShift={handleAddShift}
+          //  ドロワーからの鉛筆マーク・追加ボタンに対応
+          onEditJobRequest={handleOpenJobEdit} 
+          onAddJobRequest={handleOpenJobAdd}
+      />
       
-      <Dialog open={!!editShift} onClose={() => setEditShift(null)} fullWidth maxWidth="xs">
-        <DialogTitle>シフト操作</DialogTitle>
-        <DialogContent sx={{pt: 2, display:'flex', flexDirection:'column', gap:2}}>
-            {editShift && (
-                <>
-                    <Typography variant="subtitle1" fontWeight="bold">
-                        {editShift.customName || displayJobs.find(j => String(j.id) === String(editShift.jobId))?.name} 
-                    </Typography>
-                    
-                    <Box sx={{display:'flex', gap:1}}>
-                         <Button 
-                             fullWidth 
-                             variant={editShift.status==='paid_leave'?'contained':'outlined'} 
-                             color="success"
-                             onClick={()=>handleUpdateShiftStatus('paid_leave')}
-                         >
-                             有給
-                         </Button>
-                         <Button 
-                             fullWidth 
-                             variant={editShift.status==='absence'?'contained':'outlined'} 
-                             color="error"
-                             onClick={()=>handleUpdateShiftStatus('absence')}
-                         >
-                             欠勤
-                         </Button>
-                    </Box>
-
-                    <Box sx={{display:'flex', gap:2}}>
-                        <TextField 
-                            label="開始" 
-                            type="time" 
-                            fullWidth 
-                            InputLabelProps={{shrink:true}}
-                            value={editShift.start}
-                            onChange={(e)=>setEditShift({...editShift, start:e.target.value})}
-                            disabled={editShift.status !== 'normal'}
-                            autoComplete="off"
-                        />
-                        <TextField 
-                            label="終了" 
-                            type="time" 
-                            fullWidth 
-                            InputLabelProps={{shrink:true}}
-                            value={editShift.end}
-                            onChange={(e)=>setEditShift({...editShift, end:e.target.value})}
-                            disabled={editShift.status !== 'normal'}
-                            autoComplete="off"
-                        />
-                    </Box>
-
-                    <TextField 
-                        label="休憩 (分)" 
-                        type="number" 
-                        fullWidth 
-                        value={editShift.breakTime}
-                        onChange={(e)=>setEditShift({...editShift, breakTime:e.target.value})}
-                        disabled={editShift.status !== 'normal'}
-                        placeholder="例: 60"
-                        autoComplete="off"
-                    />
-                </>
-            )}
-        </DialogContent>
-        <DialogActions>
-            <Button onClick={handleDeleteShift} color="error">削除</Button>
-            <Button onClick={handleSaveShiftTime} variant="contained">保存</Button>
-        </DialogActions>
-      </Dialog>
-      
-      <ReloadPrompt />
-      
-      {ccNotification && (
-          <Snackbar open={!!ccNotification} autoHideDuration={6000} onClose={()=>setCCNotification(null)} anchorOrigin={{vertical:'top', horizontal:'center'}}>
-              <Alert severity="warning" onClose={()=>setCCNotification(null)}>{ccNotification.title}: {ccNotification.msg}</Alert>
-          </Snackbar>
+      {editShift && (
+          <ShiftEditModal 
+              open={!!editShift} 
+              onClose={() => setEditShift(null)} 
+              shift={editShift} 
+              job={jobs.find(j => String(j.id) === String(editShift.jobId))}
+              onUpdate={handleUpdateShiftFull} 
+              onDelete={handleDeleteShift} 
+          />
       )}
+
+      {/* ★追加: 仕事編集ダイアログ */}
+      <JobEditDialog 
+          open={jobDialogOpen} 
+          onClose={() => setJobDialogOpen(false)} 
+          job={editingJob} 
+          members={members} 
+          onSave={handleSaveJob} 
+      />
+
+      {/* ... (ReloadPrompt, Notificationなど) ... */}
     </Container>
   );
 }
