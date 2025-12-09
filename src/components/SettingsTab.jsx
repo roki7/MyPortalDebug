@@ -37,10 +37,15 @@ export default function SettingsTab({
     if (!editJob.name) return;
     const jobData = { 
         ...editJob, 
-        value: parseInt(editJob.value), 
+        value: parseInt(editJob.value) || 0, 
         breakTime: parseInt(editJob.breakTime) || 0,
         closingDay: parseInt(editJob.closingDay),
-        payDay: parseInt(editJob.payDay)
+        payDay: parseInt(editJob.payDay),
+        // ★追加: 月給・減額設定も数値化
+        monthlySalary: parseInt(editJob.monthlySalary) || 0,
+        fixedWorkingDays: editJob.fixedWorkingDays ? parseInt(editJob.fixedWorkingDays) : null,
+        deductionEarlyLeave: editJob.deductionEarlyLeave ? parseInt(editJob.deductionEarlyLeave) : null,
+        deductionAbsence: editJob.deductionAbsence ? parseInt(editJob.deductionAbsence) : null,
     };
     if (jobData.id) onUpdateJob(jobData);
     else onAddJob({ ...jobData, id: Date.now() });
@@ -62,6 +67,7 @@ export default function SettingsTab({
 
   return (
     <Box sx={{ pb: 4 }}>
+      
       {/* ★順序変更: 一括登録を上に */}
       <Typography variant="h6" gutterBottom>📅 シフト一括登録/削除</Typography>
       <Card sx={{ mb: 4 }}>
@@ -135,14 +141,53 @@ export default function SettingsTab({
           </Button>
         </CardContent>
       </Card>
-
+      <Typography variant="h6" gutterBottom>📱 アプリ設定</Typography>
+      <Card sx={{ mb: 4 }}>
+        <CardContent>
+            <Typography variant="subtitle2" gutterBottom>リアルタイム給与表示の設定</Typography>
+            <Grid container spacing={2}>
+                <Grid item xs={12}>
+                    <FormControl fullWidth size="small">
+                        <InputLabel>計算タイミング</InputLabel>
+                        <Select 
+                            value={settings.calcTiming || 'realtime'} 
+                            label="計算タイミング"
+                            onChange={(e) => onUpdateSettings({ ...settings, calcTiming: e.target.value })}
+                        >
+                            <MenuItem value="realtime">リアルタイム (分単位で増加)</MenuItem>
+                            <MenuItem value="start_of_day">当日になったら全額</MenuItem>
+                            <MenuItem value="end_of_work">勤務終了後に全額</MenuItem>
+                        </Select>
+                    </FormControl>
+                </Grid>
+                <Grid item xs={12}>
+                    <FormControl fullWidth size="small">
+                        <InputLabel>表示対象の振込月</InputLabel>
+                        <Select 
+                            value={settings.transferBase || 'next_month'} 
+                            label="表示対象の振込月"
+                            onChange={(e) => onUpdateSettings({ ...settings, transferBase: e.target.value })}
+                        >
+                            <MenuItem value="next_month">表示月の翌月振込分 (例: 5月表示→6月振込分)</MenuItem>
+                            <MenuItem value="current_month">表示月の当月振込分 (例: 5月表示→5月振込分)</MenuItem>
+                        </Select>
+                    </FormControl>
+                </Grid>
+            </Grid>
+        </CardContent>
+      </Card>
       <Dialog open={openJobDialog} onClose={() => setOpenJobDialog(false)} fullWidth maxWidth="xs">
         <DialogTitle>{editJob?.id ? '仕事を編集' : '新規作成'}</DialogTitle>
         <DialogContent sx={{ pt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
           
-          <TextField label="仕事名" fullWidth value={editJob?.name || ''} onChange={(e) => setEditJob({ ...editJob, name: e.target.value })} autoComplete="off" />
+          <TextField 
+            label="仕事名" 
+            fullWidth 
+            value={editJob?.name || ''} 
+            onChange={(e) => setEditJob({ ...editJob, name: e.target.value })} 
+            autoComplete="off" 
+          />
           
-          {/* ★追加: 担当者選択 */}
           <FormControl fullWidth>
             <InputLabel>担当者</InputLabel>
             <Select value={editJob?.memberId || 'me'} label="担当者" onChange={(e) => setEditJob({ ...editJob, memberId: e.target.value })}>
@@ -152,18 +197,63 @@ export default function SettingsTab({
             </Select>
           </FormControl>
 
-          <Box sx={{ display: 'flex', gap: 2 }}>
+          {/* ★ここがエラーの原因だった箇所です。構造を整理しました */}
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
             <FormControl fullWidth>
               <InputLabel>給与タイプ</InputLabel>
               <Select value={editJob?.type || 'hourly'} label="給与タイプ" onChange={(e) => setEditJob({ ...editJob, type: e.target.value })}>
                 <MenuItem value="hourly">時給</MenuItem>
                 <MenuItem value="fixed">日給</MenuItem>
+                <MenuItem value="monthly">月給</MenuItem>
+                <MenuItem value="commission">歩合</MenuItem>
               </Select>
             </FormControl>
-            <TextField label="金額" type="number" fullWidth value={editJob?.value || ''} onChange={(e) => setEditJob({ ...editJob, value: e.target.value })} autoComplete="off" />
+            
+            {/* 月給以外の場合はここに金額入力を並べる */}
+            {editJob?.type !== 'monthly' && (
+                <TextField 
+                  label={editJob?.type === 'commission' ? '単価 (目安)' : '金額'} 
+                  type="number" fullWidth 
+                  value={editJob?.value || ''} 
+                  onChange={(e) => setEditJob({ ...editJob, value: e.target.value })} 
+                  autoComplete="off" 
+                />
+            )}
           </Box>
 
+          {/* 月給の場合は、詳細設定パネルを表示 */}
+          {editJob?.type === 'monthly' && (
+            <Box sx={{ p: 2, border: '1px solid #eee', borderRadius: 2, bgcolor: '#f9f9f9' }}>
+                <TextField 
+                    label="月額給与" type="number" fullWidth sx={{ mb: 2 }}
+                    value={editJob?.monthlySalary || ''} 
+                    onChange={(e) => setEditJob({ ...editJob, monthlySalary: e.target.value })} 
+                />
+                <TextField 
+                    label="所定労働日数 (任意)" type="number" fullWidth sx={{ mb: 2 }}
+                    value={editJob?.fixedWorkingDays || ''} 
+                    onChange={(e) => setEditJob({ ...editJob, fixedWorkingDays: e.target.value })} 
+                    helperText="未入力ならカレンダーから自動計算"
+                />
+                 <Box sx={{ display: 'flex', gap: 2 }}>
+                    <TextField 
+                        label="早退減額" type="number" fullWidth 
+                        value={editJob?.deductionEarlyLeave || ''} 
+                        onChange={(e) => setEditJob({ ...editJob, deductionEarlyLeave: e.target.value })} 
+                        placeholder="日割り分"
+                    />
+                    <TextField 
+                        label="欠勤減額" type="number" fullWidth 
+                        value={editJob?.deductionAbsence || ''} 
+                        onChange={(e) => setEditJob({ ...editJob, deductionAbsence: e.target.value })} 
+                        placeholder="日割り分"
+                    />
+                </Box>
+            </Box>
+          )}
+
           <Divider sx={{my:1}}><Chip label="給与規定" size="small" /></Divider>
+          
           <Box sx={{ display: 'flex', gap: 2 }}>
             <FormControl fullWidth>
                 <InputLabel>締め日</InputLabel>
@@ -187,7 +277,7 @@ export default function SettingsTab({
                 <InputLabel>支払日</InputLabel>
                 <Select value={editJob?.payDay || 25} label="支払日" onChange={(e) => setEditJob({ ...editJob, payDay: e.target.value })}>
                     <MenuItem value={25}>25日</MenuItem>
-                    <MenuItem value={99}>末日</MenuItem> {/* ★修正: 末日(99) */}
+                    <MenuItem value={99}>末日</MenuItem>
                     <MenuItem value={15}>15日</MenuItem>
                     <MenuItem value={10}>10日</MenuItem>
                     <MenuItem value={1}>1日</MenuItem>

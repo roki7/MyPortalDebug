@@ -62,7 +62,15 @@ export const INITIAL_PAYMENT_TEMPLATES = [
 ];
 export const INITIAL_MEMBERS = [{ id: 'me', name: '自分', color: '#1976d2' }];
 export const INITIAL_SHOPPING = { list: [], stock: [] };
-export const INITIAL_SETTINGS = { calcMode: 'realtime', location: PREFECTURES[7], targetLimit: 1030000 };
+
+// ★ここが修正箇所。既存の INITIAL_SETTINGS を置き換える
+export const INITIAL_SETTINGS = { 
+  calcMode: 'realtime', 
+  location: PREFECTURES[7], 
+  targetLimit: 1030000,
+  calcTiming: 'realtime', 
+  transferBase: 'next_month' 
+};
 
 // --- 頂いた正しいカテゴリ ---
 export const LINK_CATEGORIES = [

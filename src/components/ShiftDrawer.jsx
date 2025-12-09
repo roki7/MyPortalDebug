@@ -2,12 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Drawer, List, ListItem, ListItemIcon, ListItemText, Typography, 
-  Box, Divider, TextField, Button, Tabs, Tab, FormControlLabel, Switch 
+  Box, Divider, TextField, Button, Tabs, Tab, FormControlLabel, Switch, IconButton 
 } from '@mui/material';
-import { Work, AddCircle, CalendarToday } from '@mui/icons-material';
+import { Work, AddCircle, CalendarToday, Edit, Add } from '@mui/icons-material';
 import { format } from 'date-fns';
 
-export default function ShiftDrawer({ open, onClose, jobs, members, selectedDate, onAddShift }) {
+export default function ShiftDrawer({ open, onClose, jobs, members, selectedDate, onAddShift, onEditJobRequest, onAddJobRequest }) {
   const [tabIndex, setTabIndex] = useState(0); // 0:選択, 1:単発
   
   // 共通: 振込日 (単発用)
@@ -82,25 +82,55 @@ export default function ShiftDrawer({ open, onClose, jobs, members, selectedDate
             {jobs.map(job => {
               const owner = members.find(m => m.id === job.memberId)?.name || '自分';
               return (
-                <ListItem button key={job.id} onClick={() => handleSelectJob(job)}>
+                <ListItem 
+                    key={job.id} 
+                    // ListItem自体は登録アクション
+                    button 
+                    onClick={() => handleSelectJob(job)}
+                    secondaryAction={
+                        // ★右側に鉛筆マークを追加
+                        <IconButton 
+                            edge="end" 
+                            onClick={(e) => {
+                                e.stopPropagation(); // 行クリックを止める
+                                onClose(); // ドロワーを閉じて
+                                if(onEditJobRequest) onEditJobRequest(job); // 設定画面を開く
+                            }}
+                        >
+                            <Edit fontSize="small" color="action" />
+                        </IconButton>
+                    }
+                >
                   <ListItemIcon>
                     <Work sx={{ color: job.color }} />
                   </ListItemIcon>
+                  {/* 表示内容を少しリッチに */}
                   <ListItemText 
                     primary={job.name} 
-                    secondary={`${owner} • ${job.type === 'hourly' ? `¥${job.value}/h` : `¥${job.value}`}`} 
+                    secondary={
+                        job.type === 'monthly' ? `月給 ¥${parseInt(job.monthlySalary).toLocaleString()}` :
+                        job.type === 'commission' ? '歩合制' :
+                        `${job.type === 'hourly' ? '時給' : '日給'} ¥${job.value.toLocaleString()}`
+                    } 
                   />
-                  <AddCircle color="primary" />
                 </ListItem>
               );
             })}
-            {jobs.length === 0 && (
-              <Box sx={{ p: 4, textAlign: 'center', opacity: 0.6 }}>
-                <Typography>登録済みの仕事がありません</Typography>
-                <Typography variant="caption">設定タブから仕事を追加するか、「単発」タブを使ってください</Typography>
-              </Box>
-            )}
           </List>
+          
+          {/* ★リストの一番下に追加ボタン */}
+          <Box sx={{ p: 2, textAlign: 'center' }}>
+              <Button 
+                variant="outlined" 
+                startIcon={<Add />} 
+                onClick={() => {
+                    onClose();
+                    if(onAddJobRequest) onAddJobRequest();
+                }}
+              >
+                  新しい仕事を追加
+              </Button>
+          </Box>
         </Box>
       )}
 
