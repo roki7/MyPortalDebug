@@ -5,17 +5,18 @@ import {
   IconButton, Button, TextField, FormControl, InputLabel, Select, MenuItem, 
   Chip, Divider, Grid, Switch, FormControlLabel, InputAdornment 
 } from '@mui/material';
-import { Edit, Delete, Add, ContentCopy, PersonRemove, Group } from '@mui/icons-material';
-import { useAuth } from '../AuthContext'; // ★追加
+import { Edit, Delete, Add, ContentCopy, PersonRemove, Group, PersonAdd } from '@mui/icons-material';
+import { useAuth } from '../AuthContext'; 
 
 export default function SettingsTab({ 
   jobs, settings, members, 
   onAddJob, onUpdateJob, onDeleteJob, 
   onUpdateSettings, onGenerateRange, onDeleteRange, onUpdateMembers,
   onEditJobRequest, onAddJobRequest,
-  sharedDocs // ★追加: MainAppから渡される共有データ
+  sharedDocs 
 }) {
-  const { userProfile, kickMember, canShareGroup, isOwner } = useAuth(); // AuthContext使用
+  // ★修正: createGroup を取得
+  const { userProfile, kickMember, canShareGroup, isOwner, createGroup } = useAuth();
 
   const [rangeStart, setRangeStart] = useState('');
   const [rangeEnd, setRangeEnd] = useState('');
@@ -63,7 +64,6 @@ export default function SettingsTab({
     }
   };
 
-  // プライバシー設定の切り替え
   const handlePrivacyChange = (key) => {
       const currentPrivacy = settings.privacy || { shifts: false, finance: false, shopping: false };
       onUpdateSettings({
@@ -72,17 +72,23 @@ export default function SettingsTab({
       });
   };
 
-  // 招待リンクコピー
   const handleCopyInvite = () => {
+      if (!userProfile?.groupId) return;
       const url = `${window.location.origin}?invite=${userProfile.groupId}`;
       navigator.clipboard.writeText(url);
       alert("招待リンクをコピーしました");
   };
 
-  // 共有関連の定数
+  // ★追加: グループ作成ハンドラ
+  const handleCreateGroup = async () => {
+      if(window.confirm("新しい共有グループを作成しますか？")) {
+          await createGroup();
+          alert("グループを作成しました。招待リンクをパートナーに送ってください。");
+      }
+  };
+
   const planName = userProfile?.plan === 'family' ? 'ファミリー' : userProfile?.plan === 'couple' ? 'カップル' : '無料';
   const maxMembers = userProfile?.plan === 'family' ? 4 : userProfile?.plan === 'couple' ? 2 : 1;
-  // 共有人数: sharedDocsの数(相手) + 1(自分)
   const currentMemberCount = (sharedDocs?.length || 0) + 1;
 
   return (
@@ -178,7 +184,7 @@ export default function SettingsTab({
         </CardContent>
       </Card>
 
-      {/* 4. ★追加: 扶養・目標設定 */}
+      {/* 4. 扶養・目標設定 */}
       <Typography variant="h6" gutterBottom>🎯 扶養・目標設定</Typography>
       <Card sx={{ mb: 3 }}>
           <CardContent>
@@ -215,7 +221,7 @@ export default function SettingsTab({
           </CardContent>
       </Card>
 
-      {/* 5. ★追加: 共有管理 (対象者のみ表示) */}
+      {/* 5. 共有管理 (対象者のみ表示) */}
       {canShareGroup && (
           <>
             <Typography variant="h6" gutterBottom>🔗 共有管理 ({planName})</Typography>
@@ -228,18 +234,25 @@ export default function SettingsTab({
                             <Typography fontWeight="bold">共有メンバー</Typography>
                         </Box>
                         <Chip 
-                            label={`${currentMemberCount} / ${maxMembers}`} 
+                            label={userProfile?.groupId ? `${currentMemberCount} / ${maxMembers}` : "未作成"} 
                             color={currentMemberCount > maxMembers ? "error" : "primary"} 
                             variant="outlined" 
                         />
                     </Box>
 
-                    {/* 招待リンク */}
-                    {userProfile?.groupId && (
+                    {/* ★修正: 招待リンク または グループ作成ボタン */}
+                    {userProfile?.groupId ? (
                         <Box sx={{ mb: 3 }}>
                             <Typography variant="caption" color="textSecondary">招待リンクを共有してパートナーを追加</Typography>
                             <Button startIcon={<ContentCopy />} fullWidth variant="contained" onClick={handleCopyInvite} sx={{ mt: 1 }}>
                                 招待リンクをコピー
+                            </Button>
+                        </Box>
+                    ) : (
+                        <Box sx={{ mb: 3, textAlign: 'center' }}>
+                            <Typography variant="body2" gutterBottom>まずは共有グループを作成しましょう</Typography>
+                            <Button startIcon={<PersonAdd />} variant="contained" color="secondary" onClick={handleCreateGroup} fullWidth>
+                                共有グループを作成
                             </Button>
                         </Box>
                     )}
@@ -267,24 +280,30 @@ export default function SettingsTab({
                         ※全員OFFにすることが推奨されます（初期設定）。
                     </Typography>
 
-                    <Divider sx={{ my: 2 }} />
-
-                    {/* メンバーリスト & 削除 */}
-                    {sharedDocs && sharedDocs.length > 0 && (
-                        <List dense>
-                            <Typography variant="subtitle2" sx={{ px: 2 }}>参加中のメンバー</Typography>
-                            {sharedDocs.map(doc => (
-                                <ListItem key={doc.uid}>
-                                    <ListItemText primary={doc.userName || '名無し'} secondary={doc.uid === userProfile.uid ? 'あなた' : 'パートナー'} />
-                                    {/* オーナーだけが削除可能 */}
-                                    {isOwner && doc.uid !== userProfile.uid && (
-                                        <IconButton size="small" color="error" onClick={() => kickMember(doc.uid)}>
-                                            <PersonRemove fontSize="small" />
-                                        </IconButton>
-                                    )}
-                                </ListItem>
-                            ))}
-                        </List>
+                    {/* メンバーリスト (グループがある場合のみ) */}
+                    {userProfile?.groupId && (
+                        <>
+                            <Divider sx={{ my: 2 }} />
+                            {sharedDocs && sharedDocs.length > 0 ? (
+                                <List dense>
+                                    <Typography variant="subtitle2" sx={{ px: 2 }}>参加中のメンバー</Typography>
+                                    {sharedDocs.map(doc => (
+                                        <ListItem key={doc.uid}>
+                                            <ListItemText primary={doc.userName || '名無し'} secondary={doc.uid === userProfile.uid ? 'あなた' : 'パートナー'} />
+                                            {isOwner && doc.uid !== userProfile.uid && (
+                                                <IconButton size="small" color="error" onClick={() => kickMember(doc.uid)}>
+                                                    <PersonRemove fontSize="small" />
+                                                </IconButton>
+                                            )}
+                                        </ListItem>
+                                    ))}
+                                </List>
+                            ) : (
+                                <Typography variant="caption" color="textSecondary" align="center" display="block">
+                                    まだパートナーはいません
+                                </Typography>
+                            )}
+                        </>
                     )}
                 </CardContent>
             </Card>
