@@ -1,7 +1,7 @@
 // src/components/ReloadPrompt.jsx
-import React from 'react';
-import { useRegisterSW } from 'virtual:pwa-register/react';
-import { Button, Snackbar, Alert } from '@mui/material';
+import React from "react";
+import { useRegisterSW } from "virtual:pwa-register/react";
+import { Button, Snackbar, Alert } from "@mui/material";
 
 export default function ReloadPrompt() {
   const {
@@ -9,10 +9,10 @@ export default function ReloadPrompt() {
     updateServiceWorker,
   } = useRegisterSW({
     onRegistered(r) {
-      console.log('SW Registered: ' + r);
+      console.log("SW Registered: " + r);
     },
     onRegisterError(error) {
-      console.log('SW registration error', error);
+      console.log("SW registration error", error);
     },
   });
 
@@ -27,10 +27,10 @@ export default function ReloadPrompt() {
   return (
     <Snackbar
       open={needRefresh}
-      anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      anchorOrigin={{ vertical: "top", horizontal: "center" }}
       sx={{ mt: 8 }} // ヘッダーとかぶらないように少し下げる
     >
-      <Alert 
+      <Alert
         severity="info"
         action={
           <Button color="inherit" size="small" onClick={handleRefresh}>
@@ -38,7 +38,7 @@ export default function ReloadPrompt() {
           </Button>
         }
         onClose={handleClose}
-        sx={{ width: '100%', boxShadow: 3 }}
+        sx={{ width: "100%", boxShadow: 3 }}
       >
         新しいバージョンが利用可能です
       </Alert>

@@ -1,8 +1,18 @@
 // src/AuthContext.jsx
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, arrayUnion, arrayRemove, collection, addDoc } from 'firebase/firestore';
-import { auth, db, googleProvider } from './firebase';
+import React, { createContext, useContext, useEffect, useState } from "react";
+import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  arrayUnion,
+  arrayRemove,
+  collection,
+  addDoc,
+} from "firebase/firestore";
+import { auth, db, googleProvider } from "./firebase";
 
 const AuthContext = createContext();
 export const useAuth = () => useContext(AuthContext);
@@ -15,7 +25,7 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const invite = params.get('invite');
+    const invite = params.get("invite");
     if (invite) setInviteCode(invite);
   }, []);
 
@@ -29,9 +39,9 @@ export const AuthProvider = ({ children }) => {
           uid: result.user.uid,
           name: result.user.displayName,
           email: result.user.email,
-          plan: 'free',
+          plan: "free",
           groupId: null,
-          createdAt: new Date()
+          createdAt: new Date(),
         });
       }
       if (inviteCode) {
@@ -51,11 +61,14 @@ export const AuthProvider = ({ children }) => {
     const groupRef = await addDoc(collection(db, "groups"), {
       ownerId: currentUser.uid,
       members: [currentUser.uid],
-      createdAt: new Date()
+      createdAt: new Date(),
     });
     const groupId = groupRef.id;
-    await updateDoc(doc(db, "users", currentUser.uid), { groupId: groupId, role: 'owner' });
-    setUserProfile(prev => ({ ...prev, groupId, role: 'owner' }));
+    await updateDoc(doc(db, "users", currentUser.uid), {
+      groupId: groupId,
+      role: "owner",
+    });
+    setUserProfile((prev) => ({ ...prev, groupId, role: "owner" }));
     return groupId;
   };
 
@@ -64,24 +77,33 @@ export const AuthProvider = ({ children }) => {
     const groupSnap = await getDoc(groupRef);
     if (groupSnap.exists()) {
       await updateDoc(groupRef, { members: arrayUnion(uid) });
-      await updateDoc(doc(db, "users", uid), { groupId: groupId, role: 'member' });
+      await updateDoc(doc(db, "users", uid), {
+        groupId: groupId,
+        role: "member",
+      });
       alert("グループに参加しました！");
       // ステートも即座に更新
-      setUserProfile(prev => ({ ...prev, groupId, role: 'member' }));
+      setUserProfile((prev) => ({ ...prev, groupId, role: "member" }));
     } else {
       alert("無効な招待リンクです。");
     }
   };
 
   const kickMember = async (targetUid) => {
-    if (!userProfile?.groupId || userProfile.role !== 'owner') return;
+    if (!userProfile?.groupId || userProfile.role !== "owner") return;
     if (!window.confirm("削除しますか？")) return;
-    
+
     const groupRef = doc(db, "groups", userProfile.groupId);
-    
+
     await updateDoc(groupRef, { members: arrayRemove(targetUid) });
-    await updateDoc(doc(db, "users", targetUid), { groupId: null, kickedFrom: userProfile.groupId, kickedAt: new Date() });
-    await deleteDoc(doc(db, "groups", userProfile.groupId, "shared_data", targetUid));
+    await updateDoc(doc(db, "users", targetUid), {
+      groupId: null,
+      kickedFrom: userProfile.groupId,
+      kickedAt: new Date(),
+    });
+    await deleteDoc(
+      doc(db, "groups", userProfile.groupId, "shared_data", targetUid)
+    );
 
     alert("削除しました");
   };
@@ -89,14 +111,19 @@ export const AuthProvider = ({ children }) => {
   const leaveGroup = async () => {
     if (!userProfile?.groupId) return;
     if (window.confirm("退会しますか？")) {
-        const groupRef = doc(db, "groups", userProfile.groupId);
-        
-        await updateDoc(groupRef, { members: arrayRemove(currentUser.uid) });
-        await updateDoc(doc(db, "users", currentUser.uid), { groupId: null, role: null });
-        await deleteDoc(doc(db, "groups", userProfile.groupId, "shared_data", currentUser.uid));
+      const groupRef = doc(db, "groups", userProfile.groupId);
 
-        setUserProfile(prev => ({ ...prev, groupId: null, role: null }));
-        window.location.reload();
+      await updateDoc(groupRef, { members: arrayRemove(currentUser.uid) });
+      await updateDoc(doc(db, "users", currentUser.uid), {
+        groupId: null,
+        role: null,
+      });
+      await deleteDoc(
+        doc(db, "groups", userProfile.groupId, "shared_data", currentUser.uid)
+      );
+
+      setUserProfile((prev) => ({ ...prev, groupId: null, role: null }));
+      window.location.reload();
     }
   };
 
@@ -116,28 +143,29 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   // ★修正: 権限ロジック
-  const plan = userProfile?.plan || 'free';
+  const plan = userProfile?.plan || "free";
   const isGroupMember = !!userProfile?.groupId; // グループに参加しているかどうか
 
   // クラウド保存: 有料プラン契約者 OR グループ参加者
-  const canSaveCloud = ['standard', 'couple', 'family'].includes(plan) || isGroupMember;
-  
+  const canSaveCloud =
+    ["standard", "couple", "family"].includes(plan) || isGroupMember;
+
   // 共有機能: カップル・ファミリー契約者 OR グループ参加者
-  const canShareGroup = ['couple', 'family'].includes(plan) || isGroupMember;
+  const canShareGroup = ["couple", "family"].includes(plan) || isGroupMember;
 
   const value = {
-    currentUser, 
-    userProfile, 
-    login, 
-    logout, 
-    createGroup, 
-    joinGroup, 
-    kickMember, 
-    leaveGroup, 
-    isOwner: userProfile?.role === 'owner',
+    currentUser,
+    userProfile,
+    login,
+    logout,
+    createGroup,
+    joinGroup,
+    kickMember,
+    leaveGroup,
+    isOwner: userProfile?.role === "owner",
     canSaveCloud,
     canShareGroup,
-    isPremium: canSaveCloud 
+    isPremium: canSaveCloud,
   };
 
   return (

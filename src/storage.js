@@ -1,5 +1,12 @@
 // src/storage.js
-import { doc, getDoc, setDoc, writeBatch, collection, onSnapshot } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  writeBatch,
+  collection,
+  onSnapshot,
+} from "firebase/firestore";
 import { db } from "./firebase";
 import { subYears, isBefore } from "date-fns";
 
@@ -8,10 +15,10 @@ const LOCAL_KEY = "shift_app_v1";
 // undefined対策
 const sanitizeData = (data) => {
   if (data === undefined) return null;
-  if (data === null || typeof data !== 'object') return data;
-  if (Array.isArray(data)) return data.map(item => sanitizeData(item));
+  if (data === null || typeof data !== "object") return data;
+  if (Array.isArray(data)) return data.map((item) => sanitizeData(item));
   const cleaned = {};
-  Object.keys(data).forEach(key => {
+  Object.keys(data).forEach((key) => {
     const val = sanitizeData(data[key]);
     cleaned[key] = val === undefined ? null : val;
   });
@@ -25,11 +32,11 @@ const cleanDataForLocal = (data) => {
   const clean = { ...data };
   if (clean.shifts) {
     const newShifts = {};
-    Object.keys(clean.shifts).forEach(dateStr => {
-       const d = new Date(dateStr);
-       if (isNaN(d.getTime()) || !isBefore(d, twoYearsAgo)) {
-         newShifts[dateStr] = clean.shifts[dateStr];
-       }
+    Object.keys(clean.shifts).forEach((dateStr) => {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime()) || !isBefore(d, twoYearsAgo)) {
+        newShifts[dateStr] = clean.shifts[dateStr];
+      }
     });
     clean.shifts = newShifts;
   }
@@ -37,7 +44,12 @@ const cleanDataForLocal = (data) => {
 };
 
 // 引数に canSaveCloud を追加
-export const saveData = async (user, fullData, groupId = null, canSaveCloud = false) => {
+export const saveData = async (
+  user,
+  fullData,
+  groupId = null,
+  canSaveCloud = false
+) => {
   try {
     const safeData = sanitizeData(fullData);
     const localData = cleanDataForLocal(safeData);
@@ -54,23 +66,29 @@ export const saveData = async (user, fullData, groupId = null, canSaveCloud = fa
     // グループ共有書き込み
     if (groupId) {
       // ★修正: プライバシー設定を取得（なければデフォルトOFF）
-      const privacy = safeData.settings?.privacy || { shifts: false, finance: false, shopping: false };
+      const privacy = safeData.settings?.privacy || {
+        shifts: false,
+        finance: false,
+        shopping: false,
+      };
 
       const groupRef = doc(db, "groups", groupId, "shared_data", user.uid);
       const sharedPayload = {
         uid: user.uid,
-        userName: user.displayName || '名無し',
+        userName: user.displayName || "名無し",
         updatedAt: new Date().toISOString(),
         // ★修正: プライバシー設定に基づいてデータをフィルタリング
-        shifts: privacy.shifts ? (safeData.shifts || {}) : {},
-        shopping: privacy.shopping ? (safeData.shopping || {}) : {},
-        payments: privacy.finance ? ((safeData.payments || []).filter(p => p.isShared)) : [],
-        
+        shifts: privacy.shifts ? safeData.shifts || {} : {},
+        shopping: privacy.shopping ? safeData.shopping || {} : {},
+        payments: privacy.finance
+          ? (safeData.payments || []).filter((p) => p.isShared)
+          : [],
+
         // jobsはshiftsの表示に必須のため、シフト共有ONなら送る（または最低限の情報のみ送る実装も可だが今回はそのまま）
         // ただしジョブ定義自体に個人情報は少ないと想定
-        jobs: privacy.shifts ? (safeData.jobs || []) : [],
-        
-        attachments: [] 
+        jobs: privacy.shifts ? safeData.jobs || [] : [],
+
+        attachments: [],
       };
       batch.set(groupRef, sanitizeData(sharedPayload), { merge: true });
     }
@@ -125,7 +143,7 @@ export const subscribeToSharedData = (groupId, onUpdate) => {
   const colRef = collection(db, "groups", groupId, "shared_data");
   return onSnapshot(colRef, (snapshot) => {
     const sharedDocs = [];
-    snapshot.forEach(doc => sharedDocs.push({ ...doc.data(), uid: doc.id }));
+    snapshot.forEach((doc) => sharedDocs.push({ ...doc.data(), uid: doc.id }));
     onUpdate(sharedDocs);
   });
 };
