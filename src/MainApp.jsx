@@ -150,6 +150,8 @@ export default function MainApp() {
   // テーマ設定の取得
   const currentThemeMode = settings.theme || "light";
   const currentTheme = themeMap[currentThemeMode];
+  // ★追加: ネオンモード判定
+  const isNeon = currentThemeMode === "neon";
 
   useEffect(() => {
     const init = async () => {
@@ -743,7 +745,12 @@ export default function MainApp() {
               height: 6,
               borderRadius: 3,
               bgcolor: "rgba(128,128,128,0.2)",
-              "& .MuiLinearProgress-bar": { bgcolor: "#00e676" },
+              "& .MuiLinearProgress-bar": {
+                // ★修正: ネオンモード時はグラデーション
+                background: isNeon
+                  ? "linear-gradient(90deg, #00F5FF, #6A00FF)"
+                  : "#00e676",
+              },
             }}
           />
         </Paper>
@@ -914,12 +921,17 @@ export default function MainApp() {
         </Paper>
 
         <Fab
-          color="secondary"
+          // ★修正: ネオンモード時はprimaryカラー(シアン)をベースにする
+          color={isNeon ? "primary" : "secondary"}
           sx={{
             position: "fixed",
             bottom: "calc(120px + env(safe-area-inset-bottom))",
             right: 16,
             zIndex: 100,
+            // ★修正: ネオンモード時はグラデーション背景
+            background: isNeon
+              ? "linear-gradient(90deg, #00F5FF, #6A00FF)"
+              : undefined,
           }}
           onClick={() => setOpenDrawer(true)}
         >

@@ -24,7 +24,7 @@ import {
   List,
   ListItem,
   ListItemText,
-  useTheme, // ★追加
+  useTheme,
 } from "@mui/material";
 import {
   Add,
@@ -47,15 +47,15 @@ export default function MyLinksTab({
   onDeleteCategory,
   onEditCategory,
 }) {
-  // ★追加: テーマを取得してダークモード判定
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
+  // ネオンモードかどうかをプライマリーカラーの色味で判定
+  const isNeon = theme.palette.primary.main === "#00F5FF";
 
   // State
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("ALL"); // カテゴリフィルタ用
+  const [selectedCategory, setSelectedCategory] = useState("ALL");
 
-  // リンク編集・追加用モーダル
   const [openLinkDialog, setOpenLinkDialog] = useState(false);
   const [editLink, setEditLink] = useState(null);
   const [linkForm, setLinkForm] = useState({
@@ -64,17 +64,14 @@ export default function MyLinksTab({
     categoryId: "",
   });
 
-  // カテゴリ管理用モーダル
   const [openCatDialog, setOpenCatDialog] = useState(false);
   const [catForm, setCatForm] = useState("");
   const [editingCatId, setEditingCatId] = useState(null);
 
-  // メニュー用 (編集・削除のポップアップ)
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedLink, setSelectedLink] = useState(null);
 
   // --- ヘルパー ---
-
   const handleLinkClick = (url) => {
     window.open(url, "_blank", "noopener,noreferrer");
   };
@@ -91,7 +88,7 @@ export default function MyLinksTab({
             src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
             onError={(e) => {
               e.target.style.display = "none";
-            }} // エラー時は非表示(親の背景色等でカバー)
+            }}
             sx={{ width: 32, height: 32, borderRadius: 1 }}
           />
         );
@@ -99,16 +96,13 @@ export default function MyLinksTab({
         return <LinkIcon fontSize="large" color="action" />;
       }
     } else {
-      // URLスキームなど
       return <PhoneIphone fontSize="large" color="primary" />;
     }
   };
 
   // --- リンク操作 ---
-
   const handleOpenLinkAdd = () => {
     setEditLink(null);
-    // 新規作成時は現在選択中のカテゴリをデフォルトにする（ALLなら先頭）
     const initialCat =
       selectedCategory !== "ALL"
         ? selectedCategory
@@ -119,7 +113,6 @@ export default function MyLinksTab({
 
   const handleOpenLinkEdit = (link) => {
     setEditLink(link);
-    // 古いデータでtitleがない場合はnameを使う、それもなければ空文字
     const title = link.title || link.name || "";
     setLinkForm({
       title: title,
@@ -138,7 +131,7 @@ export default function MyLinksTab({
     const linkData = {
       ...linkForm,
       id: editLink ? editLink.id : Date.now().toString(),
-      icon: "link", // 互換性のため
+      icon: "link",
     };
 
     if (editLink) {
@@ -157,7 +150,6 @@ export default function MyLinksTab({
   };
 
   // --- カテゴリ操作 ---
-
   const handleSaveCategory = () => {
     if (!catForm) return;
     if (editingCatId) {
@@ -179,8 +171,7 @@ export default function MyLinksTab({
     }
   };
 
-  // --- フィルタリング & 表示データ作成 ---
-
+  // --- フィルタリング ---
   let displayLinks = (myLinks || []).filter((l) => {
     const title = l.title || l.name || "";
     return title.toLowerCase().includes((searchQuery || "").toLowerCase());
@@ -198,7 +189,6 @@ export default function MyLinksTab({
     }
   }
 
-  // ★追加: 入力欄などの背景色（ダークモード対応）
   const inputBgColor = isDark ? "rgba(255, 255, 255, 0.05)" : "white";
 
   return (
@@ -218,7 +208,6 @@ export default function MyLinksTab({
               </InputAdornment>
             ),
           }}
-          // ★修正: ダークモード時の背景色調整
           sx={{ bgcolor: inputBgColor, borderRadius: 1 }}
         />
         <Button
@@ -230,14 +219,14 @@ export default function MyLinksTab({
         </Button>
       </Box>
 
-      {/* カテゴリ選択タブ (スクロール可能) */}
+      {/* カテゴリ選択タブ */}
       <Tabs
         value={selectedCategory}
         onChange={(e, v) => setSelectedCategory(v)}
         variant="scrollable"
         scrollButtons="auto"
-        textColor="inherit" // ★追加
-        indicatorColor="secondary" // ★追加
+        textColor="inherit"
+        indicatorColor="secondary"
         sx={{
           mb: 2,
           minHeight: 40,
@@ -253,7 +242,7 @@ export default function MyLinksTab({
         ) && <Tab value="uncategorized" label="未分類" />}
       </Tabs>
 
-      {/* MyApps風グリッド表示 */}
+      {/* Grid */}
       <Grid container spacing={2}>
         {displayLinks.map((link) => (
           <Grid item xs={3} sm={2} key={link.id}>
@@ -265,12 +254,11 @@ export default function MyLinksTab({
                 textAlign: "center",
                 cursor: "pointer",
                 position: "relative",
-                "&:hover .menu-btn": { opacity: 1 }, // PCでのホバー時
+                // PC用: ホバー時にのみボタンを表示したい場合はここを残す
+                "&:hover .menu-btn": { opacity: 1 },
               }}
               onClick={() => handleLinkClick(link.url)}
             >
-              {/* アイコンエリア */}
-              {/* ★ここを修正: ダークモード時の背景色を変更 */}
               <Paper
                 elevation={isDark ? 4 : 2}
                 sx={{
@@ -280,8 +268,8 @@ export default function MyLinksTab({
                   alignItems: "center",
                   justifyContent: "center",
                   mb: 1,
-                  borderRadius: 3, // 少し丸みを強く
-                  bgcolor: isDark ? "#1f2430" : "white", // ★ダークモードなら暗いグレー
+                  borderRadius: 3,
+                  bgcolor: isDark ? "#1f2430" : "white",
                   border: isDark ? "1px solid rgba(255,255,255,0.1)" : "none",
                   overflow: "hidden",
                 }}
@@ -289,20 +277,19 @@ export default function MyLinksTab({
                 {renderIcon(link.url)}
               </Paper>
 
-              {/* 名称 (titleがない場合はnameを表示) */}
               <Typography
                 variant="caption"
                 sx={{
                   lineHeight: 1.2,
                   width: "100%",
                   wordBreak: "break-word",
-                  opacity: 0.9, // 少し透明度をつけて馴染ませる
+                  opacity: 0.9,
                 }}
               >
                 {link.title || link.name || "名称なし"}
               </Typography>
 
-              {/* 編集メニューボタン (絶対配置) */}
+              {/* ★修正: メニューボタンのデザイン調整 */}
               <IconButton
                 className="menu-btn"
                 size="small"
@@ -315,12 +302,18 @@ export default function MyLinksTab({
                   position: "absolute",
                   top: -8,
                   right: -8,
-                  opacity: 0,
+                  // ↓ 背景を透明に
+                  bgcolor: "transparent",
+                  // ↓ モードに応じたアイコン色設定
+                  color: isNeon
+                    ? theme.palette.primary.main // ネオンならシアン
+                    : isDark
+                    ? "#69f0ae" // ダークなら明るいグリーン
+                    : "inherit", // ライトならデフォルト
                   transition: "opacity 0.2s",
-                  bgcolor: "rgba(255,255,255,0.8)",
-                  "&:hover": { bgcolor: "white" },
-                  // スマホでも操作しやすいよう、初期状態で少し見えるようにしても良いが、
-                  // 現在はホバーかタップで表示するスタイル
+                  // ホバー時も背景を出さない
+                  "&:hover": { bgcolor: "transparent", opacity: 1 },
+                  // 常時少し見えている状態 (0.5) を維持
                   opacity: 0.5,
                 }}
               >
@@ -338,7 +331,7 @@ export default function MyLinksTab({
         )}
       </Grid>
 
-      {/* カテゴリ管理ボタン (下部) */}
+      {/* カテゴリ管理ボタン */}
       <Box sx={{ mt: 4, textAlign: "center" }}>
         <Button
           variant="outlined"
@@ -351,7 +344,7 @@ export default function MyLinksTab({
         </Button>
       </Box>
 
-      {/* --- ダイアログ: リンク追加・編集 --- */}
+      {/* リンク編集ダイアログ */}
       <Dialog
         open={openLinkDialog}
         onClose={() => setOpenLinkDialog(false)}
@@ -404,7 +397,7 @@ export default function MyLinksTab({
         </DialogActions>
       </Dialog>
 
-      {/* --- ダイアログ: カテゴリ管理 --- */}
+      {/* カテゴリ管理ダイアログ */}
       <Dialog
         open={openCatDialog}
         onClose={() => setOpenCatDialog(false)}
@@ -467,7 +460,6 @@ export default function MyLinksTab({
         </DialogActions>
       </Dialog>
 
-      {/* --- メニュー (編集/削除) --- */}
       <Menu
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
