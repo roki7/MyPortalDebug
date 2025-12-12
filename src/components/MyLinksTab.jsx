@@ -1,211 +1,483 @@
 // src/components/MyLinksTab.jsx
-import React, { useState } from 'react';
-import { 
-  Box, Typography, Button, Card, CardContent, TextField, Chip, 
-  Dialog, DialogTitle, DialogContent, DialogActions, 
-  FormControl, InputLabel, Select, MenuItem, IconButton, Switch, FormControlLabel, Stack, Grid,
-  List, ListItem, ListItemText, ListItemIcon, Divider
-} from '@mui/material';
-import { Add, Edit, Delete, OpenInNew, Smartphone, Language, Category, Save, Apps, AccountBalanceWallet, CreditCard } from '@mui/icons-material';
+import React, { useState } from "react";
+import {
+  Box,
+  Typography,
+  IconButton,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Menu,
+  InputAdornment,
+  Grid,
+  Paper,
+  Tabs,
+  Tab,
+  ListItemIcon,
+  List,
+  ListItem,
+  ListItemText,
+  useTheme,
+} from "@mui/material";
+import {
+  Add,
+  MoreVert,
+  Edit,
+  Delete,
+  Search,
+  PhoneIphone,
+  Settings,
+  Link as LinkIcon,
+} from "@mui/icons-material";
 
-// プリセットデータ (FinanceTabから移動・統合)
-const APP_SCHEMES = [
-    { name: 'LINE', url: 'line://', short: 'LINE', defCat: 'shop' },
-    { name: 'PayPay', url: 'paypay://', short: 'PayPay', defCat: 'shop' },
-    { name: 'Amazon', url: 'https://www.amazon.co.jp/', short: 'Amazon', defCat: 'shop' },
-    { name: '楽天市場', url: 'https://www.rakuten.co.jp/', short: '楽天', defCat: 'shop' },
-    { name: '楽天カード', url: 'https://www.rakuten-card.co.jp/e-navi/', short: '楽天C', defCat: 'card' },
-    { name: '三井住友(Vpass)', url: 'https://www.smbc-card.com/mem/top/index.jsp', short: 'Vpass', defCat: 'card' },
-    { name: '三菱UFJ', url: 'https://www.bk.mufg.jp/', short: 'MUFG', defCat: 'bank' },
-    { name: '三井住友銀行', url: 'https://www.smbc.co.jp/', short: 'SMBC', defCat: 'bank' },
-    { name: 'みずほ', url: 'https://www.mizuhobank.co.jp/', short: 'みずほ', defCat: 'bank' },
-    { name: 'ゆうちょ', url: 'https://www.jp-bank.japanpost.jp/', short: '郵貯', defCat: 'bank' },
-    { name: '東京電力', url: 'https://www.kurashi.tepco.co.jp/', short: '東電', defCat: 'infra' },
-];
+export default function MyLinksTab({
+  myLinks,
+  linkCategories,
+  onAddMyLink,
+  onUpdateMyLink,
+  onDeleteMyLink,
+  onAddCategory,
+  onDeleteCategory,
+  onEditCategory,
+}) {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
+  // ネオンモードかどうかをプライマリーカラーの色味で判定
+  const isNeon = theme.palette.primary.main === "#00F5FF";
 
-export default function MyLinksTab({ myLinks, linkCategories, onAddMyLink, onDeleteMyLink, onAddCategory, onDeleteCategory }) {
-  const [filterCat, setFilterCat] = useState('all');
+  // State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("ALL");
+
   const [openLinkDialog, setOpenLinkDialog] = useState(false);
-  const [openCatManageDialog, setOpenCatManageDialog] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
+  const [editLink, setEditLink] = useState(null);
+  const [linkForm, setLinkForm] = useState({
+    title: "",
+    url: "",
+    categoryId: "",
+  });
 
-  const initialLinkState = { id: null, name: '', url: '', categoryId: 'other', autoInput: true, browserMode: 'in-app' };
-  const [editingLink, setEditingLink] = useState(initialLinkState);
-  
-  // カテゴリ管理用
-  const [newCatName, setNewCatName] = useState('');
+  const [openCatDialog, setOpenCatDialog] = useState(false);
+  const [catForm, setCatForm] = useState("");
+  const [editingCatId, setEditingCatId] = useState(null);
 
-  // --- ハンドラー ---
-  const handleSaveLink = () => {
-    if(editingLink.name && editingLink.url) {
-      const newLinkData = { 
-          ...editingLink,
-          id: editingLink.id || 'link_'+Date.now(),
-          icon: '🔗' 
-      };
-      if (editingLink.id) onDeleteMyLink(editingLink.id); // 更新の場合は一度消す（簡易実装）
-      onAddMyLink(newLinkData);
-      setOpenLinkDialog(false);
-      setEditingLink(initialLinkState);
-    }
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [selectedLink, setSelectedLink] = useState(null);
+
+  // --- ヘルパー ---
+  const handleLinkClick = (url) => {
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
-  const handleAddCategory = () => {
-    if(newCatName) {
-      onAddCategory({ id: 'cat_'+Date.now(), name: newCatName });
-      setNewCatName('');
-    }
-  };
-
-  const getLinkIcon = (url) => {
-      if (!url) return <OpenInNew sx={{fontSize:16}}/>;
-      if (url.startsWith('http')) return <Language sx={{fontSize:16}}/>; 
-      return <Smartphone sx={{fontSize:16}}/>;
-  };
-
-  const handleOpenLink = (link) => {
-      if (!link || !link.url) return;
-      if (link.url.startsWith('http')) {
-          window.open(link.url, '_blank'); 
-      } else {
-          window.location.href = link.url;
+  const renderIcon = (url) => {
+    if (!url) return <LinkIcon fontSize="large" color="action" />;
+    const isWebUrl = /^https?:\/\//i.test(url);
+    if (isWebUrl) {
+      try {
+        const domain = new URL(url).hostname;
+        return (
+          <Box
+            component="img"
+            src={`https://www.google.com/s2/favicons?domain=${domain}&sz=64`}
+            onError={(e) => {
+              e.target.style.display = "none";
+            }}
+            sx={{ width: 32, height: 32, borderRadius: 1 }}
+          />
+        );
+      } catch (e) {
+        return <LinkIcon fontSize="large" color="action" />;
       }
+    } else {
+      return <PhoneIphone fontSize="large" color="primary" />;
+    }
   };
 
-  // 表示データのフィルタリング
-  const displayedLinks = myLinks.filter(link => filterCat === 'all' || link.categoryId === filterCat);
+  // --- リンク操作 ---
+  const handleOpenLinkAdd = () => {
+    setEditLink(null);
+    const initialCat =
+      selectedCategory !== "ALL"
+        ? selectedCategory
+        : linkCategories[0]?.id || "other";
+    setLinkForm({ title: "", url: "", categoryId: initialCat });
+    setOpenLinkDialog(true);
+  };
+
+  const handleOpenLinkEdit = (link) => {
+    setEditLink(link);
+    const title = link.title || link.name || "";
+    setLinkForm({
+      title: title,
+      url: link.url,
+      categoryId: link.categoryId || "other",
+    });
+    setOpenLinkDialog(true);
+    setAnchorEl(null);
+  };
+
+  const handleSaveLink = () => {
+    if (!linkForm.title || !linkForm.url) {
+      alert("タイトルとURLは必須です");
+      return;
+    }
+    const linkData = {
+      ...linkForm,
+      id: editLink ? editLink.id : Date.now().toString(),
+      icon: "link",
+    };
+
+    if (editLink) {
+      onUpdateMyLink(linkData);
+    } else {
+      onAddMyLink(linkData);
+    }
+    setOpenLinkDialog(false);
+  };
+
+  const handleDeleteLinkAction = () => {
+    if (selectedLink && window.confirm("削除しますか？")) {
+      onDeleteMyLink(selectedLink.id);
+    }
+    setAnchorEl(null);
+  };
+
+  // --- カテゴリ操作 ---
+  const handleSaveCategory = () => {
+    if (!catForm) return;
+    if (editingCatId) {
+      onEditCategory(editingCatId, catForm);
+    } else {
+      onAddCategory({ id: Date.now().toString(), name: catForm });
+    }
+    setCatForm("");
+    setEditingCatId(null);
+  };
+
+  const handleDeleteCategoryAction = (catId) => {
+    if (
+      window.confirm(
+        "カテゴリを削除しますか？\n含まれるリンクは「その他」になります。"
+      )
+    ) {
+      onDeleteCategory(catId);
+    }
+  };
+
+  // --- フィルタリング ---
+  let displayLinks = (myLinks || []).filter((l) => {
+    const title = l.title || l.name || "";
+    return title.toLowerCase().includes((searchQuery || "").toLowerCase());
+  });
+
+  if (selectedCategory !== "ALL") {
+    if (selectedCategory === "uncategorized") {
+      displayLinks = displayLinks.filter(
+        (l) => !linkCategories.find((c) => c.id === l.categoryId)
+      );
+    } else {
+      displayLinks = displayLinks.filter(
+        (l) => l.categoryId === selectedCategory
+      );
+    }
+  }
+
+  const inputBgColor = isDark ? "rgba(255, 255, 255, 0.05)" : "white";
 
   return (
-    <Box>
-      <Typography variant="h6" gutterBottom sx={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
-        <Box sx={{display:'flex', alignItems:'center'}}><Apps sx={{ mr: 1 }} /> MyLinks</Box>
-        <Button size="small" onClick={() => setIsEditMode(!isEditMode)} startIcon={isEditMode ? <Save/> : <Edit/>}>
-            {isEditMode ? '完了' : '編集'}
-        </Button>
-      </Typography>
-
-      {/* カテゴリフィルタ（横スクロール） */}
-      <Box sx={{ display: 'flex', overflowX: 'auto', pb: 1, mb: 1, gap: 1, alignItems:'center' }}>
-        <Chip 
-            label="すべて" 
-            color={filterCat === 'all' ? "primary" : "default"} 
-            onClick={() => setFilterCat('all')} 
-            variant={filterCat === 'all' ? "filled" : "outlined"}
+    <Box sx={{ pb: 10 }}>
+      {/* 検索バー */}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="検索"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search />
+              </InputAdornment>
+            ),
+          }}
+          sx={{ bgcolor: inputBgColor, borderRadius: 1 }}
         />
-        {linkCategories.map(cat => (
-            <Chip 
-                key={cat.id} label={cat.name} 
-                color={filterCat === cat.id ? "primary" : "default"}
-                onClick={() => setFilterCat(cat.id)}
-                variant={filterCat === cat.id ? "filled" : "outlined"}
-            />
-        ))}
-        <IconButton size="small" onClick={() => setOpenCatManageDialog(true)} sx={{border:'1px solid #ddd', p:0.5}}>
-            <Category fontSize="small" />
-        </IconButton>
+        <Button
+          variant="contained"
+          sx={{ minWidth: 40, p: 1 }}
+          onClick={handleOpenLinkAdd}
+        >
+          <Add />
+        </Button>
       </Box>
 
-      {/* リンク一覧 */}
-      <Grid container spacing={2}>
-        {/* 追加ボタン */}
-        <Grid item xs={4} sm={3}>
-            <Card 
-                sx={{ height: '100%', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', border:'2px dashed #ccc', boxShadow:'none' }}
-                onClick={() => { setEditingLink({...initialLinkState, categoryId: filterCat === 'all' ? 'other' : filterCat}); setOpenLinkDialog(true); }}
-            >
-                <CardContent sx={{textAlign:'center', p:1}}>
-                    <Add color="action" fontSize="large" />
-                    <Typography variant="caption" display="block" color="textSecondary">追加</Typography>
-                </CardContent>
-            </Card>
-        </Grid>
-        
-        {displayedLinks.map(link => (
-            <Grid item xs={4} sm={3} key={link.id}>
-                <Card 
-                    sx={{ 
-                        height: '100%', cursor: 'pointer', position:'relative',
-                        bgcolor: isEditMode ? '#fff3e0' : 'white',
-                        transition: 'transform 0.1s', '&:active': { transform: 'scale(0.95)' }
-                    }}
-                    onClick={() => isEditMode ? (setEditingLink(link) || setOpenLinkDialog(true)) : handleOpenLink(link)}
-                >
-                    <CardContent sx={{textAlign:'center', p:1, '&:last-child':{pb:1}}}>
-                        <Box sx={{color: 'primary.main', mb:0.5}}>{getLinkIcon(link.url)}</Box>
-                        <Typography variant="caption" sx={{fontWeight:'bold', lineHeight:1.2, display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'}}>
-                            {link.name}
-                        </Typography>
-                        {isEditMode && (
-                            <Box sx={{position:'absolute', top:0, right:0, bgcolor:'rgba(255,255,255,0.8)', borderRadius:'0 0 0 8px'}}>
-                                <Edit sx={{fontSize:14, color:'orange'}} />
-                            </Box>
-                        )}
-                    </CardContent>
-                </Card>
-            </Grid>
+      {/* カテゴリ選択タブ */}
+      <Tabs
+        value={selectedCategory}
+        onChange={(e, v) => setSelectedCategory(v)}
+        variant="scrollable"
+        scrollButtons="auto"
+        textColor="inherit"
+        indicatorColor="secondary"
+        sx={{
+          mb: 2,
+          minHeight: 40,
+          "& .MuiTab-root": { minHeight: 40, py: 0, fontSize: "0.85rem" },
+        }}
+      >
+        <Tab value="ALL" label="すべて" />
+        {linkCategories.map((cat) => (
+          <Tab key={cat.id} value={cat.id} label={cat.name} />
         ))}
+        {myLinks.some(
+          (l) => !linkCategories.find((c) => c.id === l.categoryId)
+        ) && <Tab value="uncategorized" label="未分類" />}
+      </Tabs>
+
+      {/* Grid */}
+      <Grid container spacing={2}>
+        {displayLinks.map((link) => (
+          <Grid item xs={3} sm={2} key={link.id}>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                textAlign: "center",
+                cursor: "pointer",
+                position: "relative",
+                // PC用: ホバー時にのみボタンを表示したい場合はここを残す
+                "&:hover .menu-btn": { opacity: 1 },
+              }}
+              onClick={() => handleLinkClick(link.url)}
+            >
+              <Paper
+                elevation={isDark ? 4 : 2}
+                sx={{
+                  width: 56,
+                  height: 56,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  mb: 1,
+                  borderRadius: 3,
+                  bgcolor: isDark ? "#1f2430" : "white",
+                  border: isDark ? "1px solid rgba(255,255,255,0.1)" : "none",
+                  overflow: "hidden",
+                }}
+              >
+                {renderIcon(link.url)}
+              </Paper>
+
+              <Typography
+                variant="caption"
+                sx={{
+                  lineHeight: 1.2,
+                  width: "100%",
+                  wordBreak: "break-word",
+                  opacity: 0.9,
+                }}
+              >
+                {link.title || link.name || "名称なし"}
+              </Typography>
+
+              {/* ★修正: メニューボタンのデザイン調整 */}
+              <IconButton
+                className="menu-btn"
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setAnchorEl(e.currentTarget);
+                  setSelectedLink(link);
+                }}
+                sx={{
+                  position: "absolute",
+                  top: -8,
+                  right: -8,
+                  // ↓ 背景を透明に
+                  bgcolor: "transparent",
+                  // ↓ モードに応じたアイコン色設定
+                  color: isNeon
+                    ? theme.palette.primary.main // ネオンならシアン
+                    : isDark
+                    ? "#69f0ae" // ダークなら明るいグリーン
+                    : "inherit", // ライトならデフォルト
+                  transition: "opacity 0.2s",
+                  // ホバー時も背景を出さない
+                  "&:hover": { bgcolor: "transparent", opacity: 1 },
+                  // 常時少し見えている状態 (0.5) を維持
+                  opacity: 0.5,
+                }}
+              >
+                <MoreVert fontSize="small" />
+              </IconButton>
+            </Box>
+          </Grid>
+        ))}
+        {displayLinks.length === 0 && (
+          <Grid item xs={12}>
+            <Typography align="center" color="textSecondary" sx={{ mt: 4 }}>
+              リンクがありません
+            </Typography>
+          </Grid>
+        )}
       </Grid>
 
-      {/* リンク追加・編集ダイアログ */}
-      <Dialog open={openLinkDialog} onClose={() => setOpenLinkDialog(false)}>
-        <DialogTitle>{editingLink.id ? 'リンク編集' : 'リンク追加'}</DialogTitle>
-        <DialogContent sx={{pt:2}}>
-            {!editingLink.id && (
-                <Box sx={{mb:2}}>
-                    <Typography variant="caption" color="textSecondary">プリセットから選択:</Typography>
-                    <Box sx={{display:'flex', gap:0.5, flexWrap:'wrap', mt:0.5}}>
-                        {APP_SCHEMES.map(app => (
-                            <Chip 
-                                key={app.name} label={app.short} size="small" 
-                                onClick={() => setEditingLink({ ...editingLink, name: app.name, url: app.url, categoryId: app.defCat })}
-                                clickable variant="outlined"
-                            />
-                        ))}
-                    </Box>
-                </Box>
-            )}
-            <FormControl fullWidth sx={{mb:2, mt:1}}>
-                <InputLabel>カテゴリ</InputLabel>
-                <Select value={editingLink.categoryId} label="カテゴリ" onChange={(e)=>setEditingLink({...editingLink, categoryId:e.target.value})}>
-                    {linkCategories.map(c => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
-                </Select>
-            </FormControl>
-            <TextField label="名称" fullWidth value={editingLink.name} onChange={(e)=>setEditingLink({...editingLink, name:e.target.value})} sx={{mb:2}} />
-            <TextField label="URL / スキーム" fullWidth value={editingLink.url} onChange={(e)=>setEditingLink({...editingLink, url:e.target.value})} helperText="https://... または line:// など" sx={{mb:2}} />
+      {/* カテゴリ管理ボタン */}
+      <Box sx={{ mt: 4, textAlign: "center" }}>
+        <Button
+          variant="outlined"
+          startIcon={<Settings />}
+          onClick={() => setOpenCatDialog(true)}
+          size="small"
+          color="inherit"
+        >
+          カテゴリを管理
+        </Button>
+      </Box>
+
+      {/* リンク編集ダイアログ */}
+      <Dialog
+        open={openLinkDialog}
+        onClose={() => setOpenLinkDialog(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>{editLink ? "リンクを編集" : "リンクを追加"}</DialogTitle>
+        <DialogContent>
+          <TextField
+            label="タイトル"
+            fullWidth
+            margin="dense"
+            value={linkForm.title}
+            onChange={(e) =>
+              setLinkForm({ ...linkForm, title: e.target.value })
+            }
+          />
+          <TextField
+            label="URL / スキーム"
+            fullWidth
+            margin="dense"
+            placeholder="https://... or line://..."
+            value={linkForm.url}
+            onChange={(e) => setLinkForm({ ...linkForm, url: e.target.value })}
+            helperText="http以外はスマホアイコンになります"
+          />
+          <FormControl fullWidth margin="dense">
+            <InputLabel>カテゴリ</InputLabel>
+            <Select
+              value={linkForm.categoryId}
+              label="カテゴリ"
+              onChange={(e) =>
+                setLinkForm({ ...linkForm, categoryId: e.target.value })
+              }
+            >
+              {linkCategories.map((c) => (
+                <MenuItem key={c.id} value={c.id}>
+                  {c.name}
+                </MenuItem>
+              ))}
+              <MenuItem value="other">その他</MenuItem>
+            </Select>
+          </FormControl>
         </DialogContent>
-        <DialogActions sx={{justifyContent:'space-between'}}>
-            {editingLink.id ? (
-                 <Button onClick={() => { if(window.confirm('削除しますか？')) { onDeleteMyLink(editingLink.id); setOpenLinkDialog(false); } }} color="error">削除</Button>
-            ) : <div/>}
-            <Box>
-                <Button onClick={() => setOpenLinkDialog(false)}>キャンセル</Button>
-                <Button onClick={handleSaveLink} variant="contained">保存</Button>
-            </Box>
+        <DialogActions>
+          <Button onClick={() => setOpenLinkDialog(false)}>キャンセル</Button>
+          <Button onClick={handleSaveLink} variant="contained">
+            保存
+          </Button>
         </DialogActions>
       </Dialog>
 
       {/* カテゴリ管理ダイアログ */}
-      <Dialog open={openCatManageDialog} onClose={() => setOpenCatManageDialog(false)}>
-        <DialogTitle>ジャンル管理</DialogTitle>
-        <DialogContent sx={{pt:2}}>
-            <Box sx={{display:'flex', gap:1, mb:2}}>
-                <TextField label="新しいジャンル" size="small" fullWidth value={newCatName} onChange={(e)=>setNewCatName(e.target.value)} />
-                <Button variant="contained" onClick={handleAddCategory} disabled={!newCatName}>追加</Button>
-            </Box>
-            <List dense>
-                {linkCategories.map(cat => (
-                    <ListItem key={cat.id} secondaryAction={
-                        <IconButton edge="end" onClick={() => { if(window.confirm(`「${cat.name}」を削除しますか？`)) onDeleteCategory(cat.id); }}>
-                            <Delete fontSize="small" />
-                        </IconButton>
-                    }>
-                        <ListItemText primary={cat.name} />
-                    </ListItem>
-                ))}
-            </List>
+      <Dialog
+        open={openCatDialog}
+        onClose={() => setOpenCatDialog(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>カテゴリ管理</DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: "flex", gap: 1, mb: 2, mt: 1 }}>
+            <TextField
+              label={editingCatId ? "カテゴリ名を変更" : "新しいカテゴリ"}
+              size="small"
+              fullWidth
+              value={catForm}
+              onChange={(e) => setCatForm(e.target.value)}
+            />
+            <Button variant="contained" onClick={handleSaveCategory}>
+              {editingCatId ? "更新" : "追加"}
+            </Button>
+          </Box>
+          <List dense>
+            {linkCategories.map((cat) => (
+              <ListItem
+                key={cat.id}
+                secondaryAction={
+                  <Box>
+                    <IconButton
+                      size="small"
+                      onClick={() => {
+                        setCatForm(cat.name);
+                        setEditingCatId(cat.id);
+                      }}
+                    >
+                      <Edit fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDeleteCategoryAction(cat.id)}
+                    >
+                      <Delete fontSize="small" />
+                    </IconButton>
+                  </Box>
+                }
+              >
+                <ListItemText primary={cat.name} />
+              </ListItem>
+            ))}
+          </List>
         </DialogContent>
-        <DialogActions><Button onClick={() => setOpenCatManageDialog(false)}>閉じる</Button></DialogActions>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setOpenCatDialog(false);
+              setCatForm("");
+              setEditingCatId(null);
+            }}
+          >
+            閉じる
+          </Button>
+        </DialogActions>
       </Dialog>
+
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={() => setAnchorEl(null)}
+      >
+        <MenuItem onClick={() => handleOpenLinkEdit(selectedLink)}>
+          <ListItemIcon>
+            <Edit fontSize="small" />
+          </ListItemIcon>
+          編集
+        </MenuItem>
+        <MenuItem onClick={handleDeleteLinkAction} sx={{ color: "error.main" }}>
+          <ListItemIcon>
+            <Delete fontSize="small" color="error" />
+          </ListItemIcon>
+          削除
+        </MenuItem>
+      </Menu>
     </Box>
   );
 }

@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:dev": "npx firebase use dev && vite build --mode development && npx firebase deploy",
+    "deploy:prod": "npx firebase use prod && vite build && npx firebase deploy"
   },
   "dependencies": {
     "@emotion/react": "^11.11.0",

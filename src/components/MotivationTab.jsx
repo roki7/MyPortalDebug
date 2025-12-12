@@ -1,163 +1,570 @@
 // src/components/MotivationTab.jsx
-import React, { useState } from 'react';
-import { Box, Typography, Card, CardContent, TextField, Button, LinearProgress, Paper, Divider } from '@mui/material';
-import { EmojiEvents, Redeem, AccountBalanceWallet } from '@mui/icons-material';
+import React, { useState, useEffect } from "react";
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  Button,
+  CircularProgress,
+  Chip,
+  Alert,
+  TextField,
+  List,
+  ListItem,
+  ListItemText,
+  IconButton,
+  Divider,
+  LinearProgress,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Collapse,
+} from "@mui/material";
+import {
+  Psychology,
+  AutoAwesome,
+  Lock,
+  AddCircleOutline,
+  DeleteOutline,
+  ExpandMore,
+  ExpandLess,
+  Fastfood, // 食事・生活費アイコン用
+} from "@mui/icons-material";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { format } from "date-fns";
 
-// 励ましメッセージ集（AIの代わりにランダム表示）
-const CHEER_MESSAGES = {
-  low: [ 
-    "千里の道も一歩から！まずは固定費分をクリアだ！",
-    "今は種まきの時期。コツコツ積み上げよう🌱",
-    "焦らなくて大丈夫。確実に前進してるよ！",
-    "労働は裏切らない！次のシフトも頑張ろう💪"
-  ],
-  middle: [
-    "いい調子！折り返し地点は見えてきた！",
-    "その調子！昨日の自分よりリッチになってるよ💰",
-    "順調だね。ちょっと休憩しつつ、ゴールを目指そう☕️",
-    "コツコツ頑張る君は偉い！目標まであと半分！"
-  ],
-  high: [
-    "ゴールは目の前！ラストスパートだ！🏃‍♂️",
-    "すごい！もう手が届くところまで来てるよ✨",
-    "あと少し！ここまで頑張った自分を褒めてあげて！",
-    "カウントダウン開始！ワクワクしてきたね！"
-  ],
-  completed: [
-    "おめでとう！目標達成！！🎉",
-    "生活費を払っても余裕で買えるよ！すごい！！",
-    "頑張った成果だね。さあ、自分へのご褒美タイムだ！🎁",
-    "素晴らしい！次の目標は何にする？"
-  ]
-};
+export default function MotivationTab({
+  currentEarnings,
+  fixedCost,
+  settings,
+  onUpdateSettings,
+  isPremium = true,
+  wishlist = [],
+  onAddWishlist,
+  onDeleteWishlist,
+}) {
+  const [loading, setLoading] = useState(false);
+  const [dailyMessage, setDailyMessage] = useState(null);
+  const [error, setError] = useState(null);
 
-export default function MotivationTab({ currentEarnings, fixedCost }) {
-  const [targetItem, setTargetItem] = useState('PS5');
-  const [targetPrice, setTargetPrice] = useState(60000);
-  const [otherCost, setOtherCost] = useState(30000); 
-  
-  const [message, setMessage] = useState('');
+  // 生活費入力の開閉用
+  const [showLivingInput, setShowLivingInput] = useState(false);
 
-  // 💰 リアルな計算
-  const totalCost = fixedCost + parseInt(otherCost || 0);
-  const disposableIncome = Math.max(0, currentEarnings - totalCost);
-  
+  // 欲しいもの入力用
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemPrice, setNewItemPrice] = useState("");
+  const [newItemPriority, setNewItemPriority] = useState(1); // 1:高, 2:中, 3:低
+
+  // 生活費 (settingsから取得、なければ0)
+  const livingExpenses = parseInt(settings.livingExpenses) || 0;
+
+  // 前回のメッセージ取得用（日付チェック付き）
+  useEffect(() => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    const savedData = localStorage.getItem("gemini_daily_motivation");
+    if (savedData) {
+      const parsed = JSON.parse(savedData);
+      if (parsed.date === today) {
+        setDailyMessage(parsed.message);
+      }
+    }
+  }, []);
+
+  // --- 計算ロジック (新) ---
+  // 本当に自由なお金 = 稼ぎ - 固定費 - 生活費
+  const trueDisposableIncome = Math.max(
+    0,
+    currentEarnings - fixedCost - livingExpenses
+  );
+
+  // 欲しいもの総額
+  const totalWishlistCost = wishlist.reduce(
+    (sum, item) => sum + parseInt(item.price),
+    0
+  );
+
+  // 残り必要な金額
+  const remainingNeeded = totalWishlistCost - trueDisposableIncome;
+
   // 進捗率
-  const progress = targetPrice > 0 ? Math.min(100, Math.floor((disposableIncome / targetPrice) * 100)) : 0;
-  const remaining = Math.max(0, targetPrice - disposableIncome);
+  const progress =
+    totalWishlistCost > 0
+      ? Math.min(100, (trueDisposableIncome / totalWishlistCost) * 100)
+      : 100;
 
-  // ランダムメッセージを表示する関数
-  const handleCheerUp = () => {
-    let category = 'low';
-    if (progress >= 100) category = 'completed';
-    else if (progress >= 70) category = 'high';
-    else if (progress >= 30) category = 'middle';
+  // --- ハンドラ ---
+  const handleUpdateLivingExpenses = (val) => {
+    onUpdateSettings({ ...settings, livingExpenses: val });
+  };
 
-    const list = CHEER_MESSAGES[category];
-    const randomMsg = list[Math.floor(Math.random() * list.length)];
-    
-    // 具体的な換算も少し混ぜる
-    const beefBowl = Math.floor(disposableIncome / 500); // 牛丼換算
-    const coffee = Math.floor(disposableIncome / 150);   // コーヒー換算
-    
-    if (disposableIncome > 1000 && Math.random() > 0.7) {
-       setMessage(`金額で言うと、牛丼${beefBowl}杯分のお金が自由に使えるよ！すごい！🍚`);
-    } else {
-       setMessage(randomMsg);
+  const handleAddItem = () => {
+    // 制限チェック
+    const limit = isPremium ? 3 : 1;
+    if (wishlist.length >= limit) {
+      alert(isPremium ? "登録できるのは3つまでです" : "無料会員は1つまでです");
+      return;
+    }
+
+    if (newItemName && newItemPrice) {
+      onAddWishlist({
+        id: Date.now(),
+        name: newItemName,
+        price: parseInt(newItemPrice),
+        priority: isPremium ? newItemPriority : 1, // 無料会員は強制的に優先度1(または非表示)
+      });
+      setNewItemName("");
+      setNewItemPrice("");
+      setNewItemPriority(1);
     }
   };
 
+  const handleGenerateMessage = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey) throw new Error("APIキーが設定されていません");
+
+      // 前回のメッセージを取得（重複回避用）
+      const savedData = localStorage.getItem("gemini_daily_motivation");
+      const previousMessage = savedData
+        ? JSON.parse(savedData).message
+        : "特になし";
+
+      // 欲しいものリストの状況を文字列化 (優先順位順にソートして渡す)
+      const sortedList = [...wishlist].sort((a, b) => a.priority - b.priority);
+      const wishlistStatus =
+        sortedList.length > 0
+          ? sortedList
+              .map((i) => `[優先度${i.priority}] ${i.name}(${i.price}円)`)
+              .join(", ")
+          : "現在登録なし";
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+      const prompt = `
+        あなたはユーザー専属の情熱的で親しみやすいライフコーチです。
+        以下の詳細な収支状況をもとに、今日一日を頑張るための励ましメッセージを生成してください。
+
+        【ユーザーの状況】
+        - 現在の稼ぎ: ${currentEarnings}円
+        - 月の固定費(家賃等): ${fixedCost}円
+        - 設定された生活費(食費・酒・タバコ等): ${livingExpenses}円
+        - ★本当に自由に使えるお金: ${trueDisposableIncome}円
+          (稼ぎから固定費と生活費を引いた額)
+
+        【欲しいものリスト】
+        ${wishlistStatus}
+        
+        【計算上の状況】
+        - 欲しいもの総額: ${totalWishlistCost}円
+        - 目標達成まであと: ${
+          remainingNeeded > 0 ? remainingNeeded + "円足りない" : "全額達成！"
+        }
+
+        【制約事項】
+        1. 前回のアドバイス「${previousMessage.substring(
+          0,
+          15
+        )}...」とは違う切り口で話してください。
+        2. 「生活費」はユーザーにとって大事な息抜き資金(食費やおやつ代)です。これを確保した上で、さらに欲しいものが買えるかどうかに言及してください。
+        3. 欲しいものリストがある場合は、優先順位が高いものを具体的に挙げ、「あと少しで〇〇が手に入る！」などと鼓舞してください。
+        4. 60文字程度で、ポジティブかつユーモアを交えて。
+      `;
+
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+
+      setDailyMessage(text);
+
+      const today = format(new Date(), "yyyy-MM-dd");
+      localStorage.setItem(
+        "gemini_daily_motivation",
+        JSON.stringify({ date: today, message: text })
+      );
+    } catch (err) {
+      console.error(err);
+      setError("AIコーチが休憩中です...また後で！");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 表示用のバランス計算（マイナスにならないように）
+  const balanceDisplay = currentEarnings - fixedCost - livingExpenses;
+  const isBudgetSafe = balanceDisplay >= 0;
+
+  // リストのソート（表示用）
+  const displayWishlist = [...wishlist].sort((a, b) => a.priority - b.priority);
+
+  // 登録制限数
+  const maxItems = isPremium ? 3 : 1;
+  const isLimitReached = wishlist.length >= maxItems;
+
   return (
     <Box>
-      <Typography variant="h6" gutterBottom sx={{display:'flex', alignItems:'center'}}>
-        <Redeem sx={{mr:1, color:'orange'}}/> リアル・モチベーション
-      </Typography>
+      {/* 1. 収支状況カード */}
+      <Card sx={{ mb: 2, bgcolor: "background.paper" }}>
+        <CardContent sx={{ textAlign: "center" }}>
+          <Typography
+            variant="h6"
+            gutterBottom
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            今月の余裕資金{" "}
+            <Chip
+              label="Real"
+              size="small"
+              color="success"
+              sx={{ ml: 1, height: 20 }}
+            />
+          </Typography>
 
-      {/* 収支計算エリア */}
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "center",
+              gap: 2,
+              mb: 1,
+              flexWrap: "wrap",
+            }}
+          >
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                稼ぎ
+              </Typography>
+              <Typography variant="body2" color="success" fontWeight="bold">
+                +¥{currentEarnings.toLocaleString()}
+              </Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                固定費
+              </Typography>
+              <Typography variant="body2" color="error" fontWeight="bold">
+                -¥{fixedCost.toLocaleString()}
+              </Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">
+                生活費(概算)
+              </Typography>
+              <Typography
+                variant="body2"
+                color="warning.main"
+                fontWeight="bold"
+              >
+                -¥{livingExpenses.toLocaleString()}
+              </Typography>
+            </Box>
+          </Box>
+
+          <Divider sx={{ my: 1 }} />
+
+          <Typography variant="caption" color="text.secondary">
+            本当に自由に使えるお金
+          </Typography>
+          <Typography
+            variant="h3"
+            fontWeight="bold"
+            color={isBudgetSafe ? "primary" : "error"}
+          >
+            {isBudgetSafe ? "" : "-"}¥
+            {Math.abs(balanceDisplay).toLocaleString()}
+          </Typography>
+
+          {/* 生活費設定アコーディオン */}
+          <Box sx={{ mt: 2 }}>
+            <Button
+              size="small"
+              startIcon={showLivingInput ? <ExpandLess /> : <Fastfood />}
+              onClick={() => setShowLivingInput(!showLivingInput)}
+              sx={{ color: "text.secondary", fontSize: "0.8rem" }}
+            >
+              生活費(食費・酒・タバコ等)を設定
+            </Button>
+            <Collapse in={showLivingInput}>
+              <Box sx={{ mt: 1, p: 2, bgcolor: "#f5f5f5", borderRadius: 2 }}>
+                <Typography
+                  variant="caption"
+                  display="block"
+                  sx={{ mb: 1, textAlign: "left" }}
+                >
+                  毎月大体かかる生活費（食事、お酒、おやつ、タバコなど）を入力してください。これを引いた額を「自由なお金」として計算します。
+                </Typography>
+                <TextField
+                  label="月の大まかな生活費"
+                  type="number"
+                  size="small"
+                  fullWidth
+                  value={livingExpenses === 0 ? "" : livingExpenses}
+                  onChange={(e) =>
+                    handleUpdateLivingExpenses(parseInt(e.target.value) || 0)
+                  }
+                  InputProps={{
+                    endAdornment: <Typography variant="caption">円</Typography>,
+                  }}
+                />
+              </Box>
+            </Collapse>
+          </Box>
+        </CardContent>
+      </Card>
+
+      {/* 2. 欲しいものリスト機能 */}
       <Card sx={{ mb: 2 }}>
         <CardContent>
-          <Typography variant="subtitle2" gutterBottom><AccountBalanceWallet sx={{fontSize:16, mr:0.5}}/> 自由なお金の計算</Typography>
-          
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:1, color: 'text.secondary' }}>
-            <Typography variant="body2">今月の稼ぎ:</Typography>
-            <Typography variant="body2">+ ¥{currentEarnings.toLocaleString()}</Typography>
-          </Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb:1, color: 'error.main' }}>
-            <Typography variant="body2">固定費 (家賃等):</Typography>
-            <Typography variant="body2">- ¥{fixedCost.toLocaleString()}</Typography>
-          </Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-             <Typography variant="body2" color="error.main">その他生活費:</Typography>
-             <TextField 
-                variant="standard" type="number" size="small" sx={{width:80, input: {textAlign:'right', color:'red'}}}
-                value={otherCost} onChange={(e) => setOtherCost(e.target.value)}
-                InputProps={{ startAdornment: <span style={{color:'red'}}>- ¥</span> }}
-             />
-          </Box>
-          
-          <Divider sx={{my:1}} />
-          
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', fontWeight:'bold' }}>
-            <Typography>自由に使えるお金:</Typography>
-            <Typography variant="h5" color={disposableIncome > 0 ? "primary" : "text.disabled"}>
-              ¥{disposableIncome.toLocaleString()}
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              mb: 1,
+            }}
+          >
+            <Typography variant="h6">🎁 欲しいものリスト</Typography>
+            <Typography variant="caption">
+              {remainingNeeded <= 0 && wishlist.length > 0
+                ? "🎉 全て買えます！"
+                : isBudgetSafe
+                ? `あと ¥${remainingNeeded.toLocaleString()}`
+                : "まずは赤字解消！"}
             </Typography>
           </Box>
-        </CardContent>
-      </Card>
 
-      {/* 目標エリア */}
-      <Card sx={{ mb: 2, bgcolor: '#fff8e1' }}>
-        <CardContent>
-          <Typography variant="caption" color="textSecondary">目標（欲しいもの）</Typography>
-          <Box sx={{ display: 'flex', gap: 2, mb: 2, mt: 1 }}>
-            <TextField 
-              label="モノの名前" variant="standard" size="small" fullWidth
-              value={targetItem} onChange={(e) => setTargetItem(e.target.value)}
-            />
-            <TextField 
-              label="金額" type="number" variant="standard" size="small" sx={{width:100}}
-              value={targetPrice} onChange={(e) => setTargetPrice(e.target.value)}
-            />
-          </Box>
-
-          <Box sx={{ mb: 1 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-              <Typography variant="body2" fontWeight="bold">達成率 {progress}%</Typography>
-              <Typography variant="caption">あと ¥{remaining.toLocaleString()}</Typography>
+          {wishlist.length > 0 && isBudgetSafe && (
+            <Box sx={{ mb: 2 }}>
+              <LinearProgress
+                variant="determinate"
+                value={progress}
+                sx={{ height: 10, borderRadius: 5, mb: 1 }}
+                color={progress >= 100 ? "success" : "primary"}
+              />
+              <Typography variant="caption" align="right" display="block">
+                達成率: {Math.floor(progress)}%
+              </Typography>
             </Box>
-            <LinearProgress 
-              variant="determinate" value={progress} 
-              sx={{ height: 10, borderRadius: 5, bgcolor: 'white', '& .MuiLinearProgress-bar': { bgcolor: 'orange' } }} 
-            />
-          </Box>
+          )}
+
+          <List dense sx={{ bgcolor: "#f9f9f9", borderRadius: 1, mb: 2 }}>
+            {displayWishlist.map((item) => (
+              <ListItem
+                key={item.id}
+                secondaryAction={
+                  <IconButton
+                    edge="end"
+                    size="small"
+                    onClick={() => onDeleteWishlist(item.id)}
+                  >
+                    <DeleteOutline fontSize="small" />
+                  </IconButton>
+                }
+              >
+                <ListItemText
+                  primary={
+                    <Box
+                      component="span"
+                      sx={{ display: "flex", alignItems: "center" }}
+                    >
+                      {isPremium && (
+                        <Chip
+                          label={`No.${item.priority}`}
+                          size="small"
+                          color={item.priority === 1 ? "secondary" : "default"}
+                          sx={{ mr: 1, height: 20, fontSize: "0.6rem" }}
+                        />
+                      )}
+                      {item.name}
+                    </Box>
+                  }
+                  secondary={`¥${item.price.toLocaleString()}`}
+                />
+              </ListItem>
+            ))}
+            {wishlist.length === 0 && (
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                align="center"
+                sx={{ py: 2 }}
+              >
+                欲しいものを登録しよう！
+                <br />
+                <Typography variant="caption">
+                  無料:1個まで / Premium:3個まで
+                </Typography>
+              </Typography>
+            )}
+          </List>
+
+          {/* 追加フォーム */}
+          {!isLimitReached ? (
+            <Box sx={{ display: "flex", gap: 1, alignItems: "flex-end" }}>
+              <Box sx={{ flex: 1 }}>
+                <TextField
+                  label="名称"
+                  size="small"
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  fullWidth
+                  margin="dense"
+                />
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <TextField
+                    label="金額"
+                    size="small"
+                    type="number"
+                    value={newItemPrice}
+                    onChange={(e) => setNewItemPrice(e.target.value)}
+                    sx={{ flex: 1 }}
+                    margin="dense"
+                  />
+                  {isPremium && (
+                    <FormControl size="small" margin="dense" sx={{ width: 80 }}>
+                      <InputLabel>優先</InputLabel>
+                      <Select
+                        value={newItemPriority}
+                        label="優先"
+                        onChange={(e) => setNewItemPriority(e.target.value)}
+                      >
+                        <MenuItem value={1}>高</MenuItem>
+                        <MenuItem value={2}>中</MenuItem>
+                        <MenuItem value={3}>低</MenuItem>
+                      </Select>
+                    </FormControl>
+                  )}
+                </Box>
+              </Box>
+              <Button
+                variant="contained"
+                onClick={handleAddItem}
+                disabled={!newItemName || !newItemPrice}
+                sx={{ mb: 1, minWidth: "50px", height: "40px" }}
+              >
+                <AddCircleOutline />
+              </Button>
+            </Box>
+          ) : (
+            <Alert
+              severity={isPremium ? "info" : "warning"}
+              sx={{ fontSize: "0.8rem" }}
+            >
+              {isPremium
+                ? "リスト登録は3個までです"
+                : "無料会員は1個までです。Premiumで3個まで解放！"}
+            </Alert>
+          )}
         </CardContent>
       </Card>
 
-      {/* 励ましボタン */}
-      <Box sx={{ textAlign: 'center', mt: 3 }}>
-        <Button 
-          variant="contained" 
-          color="secondary" 
-          startIcon={<EmojiEvents />}
-          onClick={handleCheerUp}
-          sx={{ borderRadius: 20, px: 4, background: 'linear-gradient(45deg, #FF9800 30%, #FF5722 90%)' }}
-        >
-          励ましてもらう！
-        </Button>
-
-        {message && (
-          <Paper sx={{ mt: 3, p: 2, position: 'relative', bgcolor: 'white', borderRadius: 2 }}>
-            <Box sx={{ 
-              position: 'absolute', top: -10, left: '50%', transform: 'translateX(-50%)',
-              width: 0, height: 0, borderLeft: '10px solid transparent', borderRight: '10px solid transparent', borderBottom: '10px solid white' 
-            }} />
-            <Typography variant="body1" sx={{ fontWeight: 'bold', color: '#333' }}>
-              {message}
+      {/* 3. AIコーチ (Gemini) - 有料会員のみ */}
+      <Card
+        sx={{
+          border: "2px solid",
+          borderColor: "secondary.main",
+          bgcolor: "#fff8e1",
+        }}
+      >
+        <CardContent>
+          <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
+            <AutoAwesome color="secondary" sx={{ mr: 1 }} />
+            <Typography variant="h6" fontWeight="bold" color="secondary.main">
+              今日のAIコーチ
             </Typography>
-          </Paper>
-        )}
-      </Box>
+            {!isPremium && (
+              <Chip
+                label="Premium Only"
+                size="small"
+                sx={{ ml: 1, bgcolor: "#333", color: "#fff" }}
+              />
+            )}
+          </Box>
+
+          {!isPremium ? (
+            <Box sx={{ textAlign: "center", py: 2, color: "text.secondary" }}>
+              <Lock sx={{ fontSize: 40, mb: 1 }} />
+              <Typography variant="body2">
+                ここにはAIからの励ましメッセージが表示されます。
+                <br />
+                欲しいものリストとあなたの収支状況を分析して、毎日違うアドバイスをくれます。
+              </Typography>
+            </Box>
+          ) : (
+            <>
+              {dailyMessage ? (
+                <Box
+                  sx={{
+                    p: 2,
+                    bgcolor: "white",
+                    borderRadius: 2,
+                    border: "1px dashed #fbc02d",
+                    textAlign: "center",
+                    position: "relative",
+                  }}
+                >
+                  <Typography
+                    variant="body1"
+                    sx={{
+                      fontWeight: "bold",
+                      fontSize: "1.05rem",
+                      mb: 1,
+                      color: "#4e342e",
+                    }}
+                  >
+                    "{dailyMessage}"
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
+                    明日また新しい言葉を届けます
+                  </Typography>
+                </Box>
+              ) : (
+                <Box sx={{ textAlign: "center" }}>
+                  <Typography variant="body2" sx={{ mb: 2 }}>
+                    生活費も確保した上で、欲しいものに手が届くか。
+                    <br />
+                    今の頑張りをAIが分析してエールを送ります！
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    size="large"
+                    startIcon={
+                      loading ? (
+                        <CircularProgress size={20} color="inherit" />
+                      ) : (
+                        <Psychology />
+                      )
+                    }
+                    onClick={handleGenerateMessage}
+                    disabled={loading}
+                    fullWidth
+                    sx={{ fontWeight: "bold" }}
+                  >
+                    {loading ? "分析中..." : "今日の言葉を受け取る"}
+                  </Button>
+                </Box>
+              )}
+              {error && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {error}
+                </Alert>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
     </Box>
   );
 }
