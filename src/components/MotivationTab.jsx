@@ -160,8 +160,12 @@ export default function MotivationTab({
           : "現在登録なし";
 
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
+      const model = genAI.getGenerativeModel(
+        {
+          model: "gemini-1.5-flash",
+        },
+        { apiVersion: "v1beta" }
+      );
       const prompt = `
         あなたはユーザー専属の情熱的で親しみやすいライフコーチです。
         以下の詳細な収支状況をもとに、今日一日を頑張るための励ましメッセージを生成してください。
