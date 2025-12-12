@@ -73,6 +73,7 @@ import {
   calculateCurrentEarnings,
   getDisplayLabel,
   filterShiftsForUser,
+  getAnnualMonthlyIncome,
 } from "./logic";
 
 import { saveData, loadData, subscribeToSharedData } from "./storage";
@@ -137,6 +138,7 @@ export default function MainApp() {
     household: 0,
   });
   const [annualSummary, setAnnualSummary] = useState([]);
+  const [monthlyIncomeData, setMonthlyIncomeData] = useState([]);
   const [weatherData, setWeatherData] = useState({});
   const [openMenu, setOpenMenu] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -314,7 +316,17 @@ export default function MainApp() {
       currentDate
     );
     setAnnualSummary(summary);
-  }, [calculationShifts, calculationJobs, currentDate, settings]);
+    const targetShifts = isHousehold
+      ? calculationShifts
+      : filterShiftsForUser(calculationShifts, calculationJobs, "me");
+
+    const monthlyData = getAnnualMonthlyIncome(
+      targetShifts,
+      calculationJobs,
+      currentDate
+    );
+    setMonthlyIncomeData(monthlyData);
+  }, [calculationShifts, calculationJobs, currentDate, settings, isHousehold]);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 30000);
@@ -848,6 +860,7 @@ export default function MainApp() {
               targetLimit={settings.targetLimit}
               accounts={accounts}
               totalFixedCost={totalFixedCost}
+              monthlyIncomeData={monthlyIncomeData}
             />
           )}
           {tabIndex === 5 && (

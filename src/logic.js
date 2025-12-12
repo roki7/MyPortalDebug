@@ -486,3 +486,40 @@ export const getDisplayLabel = (settings) => {
   const baseText = base === "next_month" ? "翌月振込" : "当月振込";
   return `確定 (${baseText})`;
 };
+
+export const getAnnualMonthlyIncome = (shifts, jobs, currentDate) => {
+  // 1月〜12月の器を作成 (0埋め)
+  const monthlyTotals = Array(12).fill(0);
+
+  const targetYear = currentDate.getFullYear();
+
+  // 全シフトを走査して集計
+  Object.keys(shifts).forEach((dateStr) => {
+    shifts[dateStr].forEach((shift) => {
+      if (shift.status === "absence") return;
+
+      const job = jobs.find((j) => String(j.id) === String(shift.jobId));
+      // 自分（ユーザー）の仕事のみを対象とする場合
+      // const isMyShift = !job.memberId || job.memberId === "me";
+      // if (!isMyShift) return; // 必要に応じてコメントアウトを外してください（世帯合算か個人かによる）
+
+      // 振込日(PayDate)を基準に集計する（キャッシュフローベース）
+      const payDate = getPayDateForShift(dateStr, job, shift.customPayDate);
+
+      // 表示中の年のデータのみ加算
+      if (payDate.getFullYear() === targetYear) {
+        // calculateShiftAmount は内部関数ですが、このファイル内なら参照可能と仮定
+        // もし参照できない場合は、ロジックをコピーするか、calculateShiftAmountをexportしてください
+        // ここでは同じファイル内にある前提で呼び出します
+        const amount = calculateShiftAmount(shift, job, shifts, dateStr);
+        monthlyTotals[payDate.getMonth()] += amount;
+      }
+    });
+  });
+
+  // グラフ用にデータを整形して返す
+  return monthlyTotals.map((amount, index) => ({
+    month: `${index + 1}月`,
+    income: amount,
+  }));
+};
