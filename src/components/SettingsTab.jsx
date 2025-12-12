@@ -393,7 +393,40 @@ export default function SettingsTab({
         </CardContent>
       </Card>
 
-      {/* 5. 計算・表示設定（復元） */}
+      {/* 5.テーマ設定 */}
+      <Typography variant="h6" gutterBottom>
+        🎨 デザインテーマ
+      </Typography>
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <FormControl fullWidth size="small">
+            <InputLabel>アプリの見た目</InputLabel>
+            <Select
+              value={settings.theme || "light"}
+              label="アプリの見た目"
+              onChange={(e) =>
+                onUpdateSettings({
+                  ...settings,
+                  theme: e.target.value,
+                })
+              }
+            >
+              <MenuItem value="light">☀️ 標準 (ライト)</MenuItem>
+              <MenuItem value="dark">🌙 ダークモード</MenuItem>
+              <MenuItem value="neon">🚀 Unif1 Neon (サイバー)</MenuItem>
+            </Select>
+          </FormControl>
+          {settings.theme === "neon" && (
+            <Typography
+              variant="caption"
+              sx={{ mt: 1, display: "block", color: "#00e676" }}
+            >
+              Welcome to Unif1 World. 視認性を確保しつつ、没入感を提供します。
+            </Typography>
+          )}
+        </CardContent>
+      </Card>
+      {/* 6. 計算・表示設定（復元） */}
       <Typography variant="h6" gutterBottom>
         🧮 計算・表示設定
       </Typography>
@@ -445,7 +478,7 @@ export default function SettingsTab({
         </CardContent>
       </Card>
 
-      {/* 6. 共有管理 (対象者のみ表示) */}
+      {/* 7. 共有管理 (対象者のみ表示) */}
       {canShareGroup && (
         <>
           <Typography variant="h6" gutterBottom>

@@ -97,6 +97,7 @@ export const INITIAL_SETTINGS = {
     finance: false,
     shopping: false,
   },
+  theme: "light",
 };
 
 export const LINK_CATEGORIES = [

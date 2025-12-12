@@ -3,8 +3,6 @@ import React, { useState } from "react";
 import {
   Box,
   Typography,
-  Card,
-  CardContent,
   IconButton,
   Button,
   Dialog,
@@ -26,6 +24,7 @@ import {
   List,
   ListItem,
   ListItemText,
+  useTheme, // ★追加
 } from "@mui/material";
 import {
   Add,
@@ -48,6 +47,10 @@ export default function MyLinksTab({
   onDeleteCategory,
   onEditCategory,
 }) {
+  // ★追加: テーマを取得してダークモード判定
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
+
   // State
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("ALL"); // カテゴリフィルタ用
@@ -178,14 +181,11 @@ export default function MyLinksTab({
 
   // --- フィルタリング & 表示データ作成 ---
 
-  // 1. 検索フィルタ
-  // ★修正: title が undefined の場合に備えて空文字にフォールバックする処理を追加
   let displayLinks = (myLinks || []).filter((l) => {
     const title = l.title || l.name || "";
     return title.toLowerCase().includes((searchQuery || "").toLowerCase());
   });
 
-  // 2. カテゴリフィルタ (ALL以外の場合)
   if (selectedCategory !== "ALL") {
     if (selectedCategory === "uncategorized") {
       displayLinks = displayLinks.filter(
@@ -197,6 +197,9 @@ export default function MyLinksTab({
       );
     }
   }
+
+  // ★追加: 入力欄などの背景色（ダークモード対応）
+  const inputBgColor = isDark ? "rgba(255, 255, 255, 0.05)" : "white";
 
   return (
     <Box sx={{ pb: 10 }}>
@@ -215,7 +218,8 @@ export default function MyLinksTab({
               </InputAdornment>
             ),
           }}
-          sx={{ bgcolor: "white", borderRadius: 1 }}
+          // ★修正: ダークモード時の背景色調整
+          sx={{ bgcolor: inputBgColor, borderRadius: 1 }}
         />
         <Button
           variant="contained"
@@ -232,6 +236,8 @@ export default function MyLinksTab({
         onChange={(e, v) => setSelectedCategory(v)}
         variant="scrollable"
         scrollButtons="auto"
+        textColor="inherit" // ★追加
+        indicatorColor="secondary" // ★追加
         sx={{
           mb: 2,
           minHeight: 40,
@@ -264,8 +270,9 @@ export default function MyLinksTab({
               onClick={() => handleLinkClick(link.url)}
             >
               {/* アイコンエリア */}
+              {/* ★ここを修正: ダークモード時の背景色を変更 */}
               <Paper
-                elevation={2}
+                elevation={isDark ? 4 : 2}
                 sx={{
                   width: 56,
                   height: 56,
@@ -273,8 +280,9 @@ export default function MyLinksTab({
                   alignItems: "center",
                   justifyContent: "center",
                   mb: 1,
-                  borderRadius: 2,
-                  bgcolor: "white",
+                  borderRadius: 3, // 少し丸みを強く
+                  bgcolor: isDark ? "#1f2430" : "white", // ★ダークモードなら暗いグレー
+                  border: isDark ? "1px solid rgba(255,255,255,0.1)" : "none",
                   overflow: "hidden",
                 }}
               >
@@ -284,7 +292,12 @@ export default function MyLinksTab({
               {/* 名称 (titleがない場合はnameを表示) */}
               <Typography
                 variant="caption"
-                sx={{ lineHeight: 1.2, width: "100%", wordBreak: "break-word" }}
+                sx={{
+                  lineHeight: 1.2,
+                  width: "100%",
+                  wordBreak: "break-word",
+                  opacity: 0.9, // 少し透明度をつけて馴染ませる
+                }}
               >
                 {link.title || link.name || "名称なし"}
               </Typography>
@@ -306,6 +319,8 @@ export default function MyLinksTab({
                   transition: "opacity 0.2s",
                   bgcolor: "rgba(255,255,255,0.8)",
                   "&:hover": { bgcolor: "white" },
+                  // スマホでも操作しやすいよう、初期状態で少し見えるようにしても良いが、
+                  // 現在はホバーかタップで表示するスタイル
                   opacity: 0.5,
                 }}
               >

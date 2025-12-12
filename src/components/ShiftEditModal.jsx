@@ -11,6 +11,8 @@ import {
   Switch,
   Box,
   Divider,
+  Paper,
+  useTheme,
 } from "@mui/material";
 
 export default function ShiftEditModal({
@@ -21,14 +23,17 @@ export default function ShiftEditModal({
   onUpdate,
   onDelete,
 }) {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
+
   const [isManual, setIsManual] = useState(false);
   const [manualAmount, setManualAmount] = useState("");
   const [manualDate, setManualDate] = useState("");
 
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
-  const [breakTime, setBreakTime] = useState(""); // 休憩時間
-  const [status, setStatus] = useState("attended"); // attended, absence, early_leave
+  const [breakTime, setBreakTime] = useState("");
+  const [status, setStatus] = useState("attended");
 
   useEffect(() => {
     if (shift) {
@@ -37,7 +42,6 @@ export default function ShiftEditModal({
       setManualDate(shift.manualTransferDate || "");
       setStartTime(shift.start || job?.defaultStart || "");
       setEndTime(shift.end || job?.defaultEnd || "");
-      // 休憩時間: シフトに保存されていればそれ、なければ仕事設定のデフォルト、なければ0
       setBreakTime(
         shift.breakTime !== undefined ? shift.breakTime : job?.breakTime || 0
       );
@@ -53,10 +57,8 @@ export default function ShiftEditModal({
       breakTime: parseInt(breakTime) || 0,
       status: status,
       isManualOverride: isManual,
-      // 手動モードなら入力値を保存、そうでなければクリア
       manualAmount: isManual ? parseInt(manualAmount) : null,
       manualTransferDate: isManual ? manualDate : null,
-      // 歩合などで毎回入力が必要な場合
       commissionAmount:
         job?.type === "commission"
           ? parseInt(manualAmount)
@@ -66,10 +68,9 @@ export default function ShiftEditModal({
     onClose();
   };
 
-  // ★修正: ステータスのトグル処理（同じボタンを押すと通常に戻る）
   const handleToggleStatus = (targetStatus) => {
     if (status === targetStatus) {
-      setStatus("attended"); // 解除して通常へ
+      setStatus("attended");
     } else {
       setStatus(targetStatus);
     }
@@ -77,14 +78,18 @@ export default function ShiftEditModal({
 
   if (!shift) return null;
 
-  // 早退・欠勤時は時間をグレーアウトする判定
   const isTimeDisabled = status === "early_leave" || status === "absence";
+
+  // 色設定
+  const paperBgColor = isDark ? theme.palette.background.paper : "#fff";
+  const manualBoxBgColor = isDark ? "rgba(255, 152, 0, 0.15)" : "#fff3e0";
+  const inputBgColor = isDark ? "rgba(255, 255, 255, 0.05)" : "transparent";
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
       <DialogTitle>{job?.name || shift.customName || "詳細編集"}</DialogTitle>
       <DialogContent>
-        {/* ステータス変更: トグル式に変更 */}
+        {/* ステータス変更 */}
         <Box sx={{ mb: 2, display: "flex", gap: 1 }}>
           <Button
             variant={status === "early_leave" ? "contained" : "outlined"}
@@ -104,9 +109,18 @@ export default function ShiftEditModal({
           </Button>
         </Box>
 
-        {/* 時間変更（時給制の場合のみ表示、手動ONでも消さない） */}
+        {/* 時間変更（時給制の場合のみ） */}
         {job?.type === "hourly" && (
-          <>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 2,
+              borderRadius: 2,
+              bgcolor: paperBgColor,
+              border: `1px solid ${theme.palette.divider}`,
+              mb: 2,
+            }}
+          >
             <Box sx={{ display: "flex", gap: 2, mb: 2 }}>
               <TextField
                 label="開始"
@@ -115,7 +129,8 @@ export default function ShiftEditModal({
                 InputLabelProps={{ shrink: true }}
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
-                disabled={isTimeDisabled} // 早退・欠勤時は入力不可
+                disabled={isTimeDisabled}
+                sx={{ "& .MuiInputBase-root": { bgcolor: inputBgColor } }}
               />
               <TextField
                 label="終了"
@@ -124,28 +139,28 @@ export default function ShiftEditModal({
                 InputLabelProps={{ shrink: true }}
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
-                disabled={isTimeDisabled} // 早退・欠勤時は入力不可
+                disabled={isTimeDisabled}
+                sx={{ "& .MuiInputBase-root": { bgcolor: inputBgColor } }}
               />
             </Box>
-            {/* 休憩時間の復活 */}
             <TextField
               label="休憩 (分)"
               type="number"
               fullWidth
               value={breakTime}
               onChange={(e) => setBreakTime(e.target.value)}
-              disabled={isTimeDisabled} // 早退・欠勤時は入力不可
+              disabled={isTimeDisabled}
               placeholder="例: 60"
               autoComplete="off"
-              sx={{ mb: 2 }}
+              sx={{ "& .MuiInputBase-root": { bgcolor: inputBgColor } }}
             />
-          </>
+          </Paper>
         )}
 
         <Divider sx={{ my: 2 }} />
 
         {/* 手動修正スイッチエリア */}
-        <Box sx={{ bgcolor: "#fff3e0", p: 2, borderRadius: 2 }}>
+        <Box sx={{ bgcolor: manualBoxBgColor, p: 2, borderRadius: 2 }}>
           <FormControlLabel
             control={
               <Switch
@@ -157,7 +172,6 @@ export default function ShiftEditModal({
             sx={{ mb: 1, display: "block" }}
           />
 
-          {/* スイッチONの時だけ表示 */}
           {isManual && (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <TextField
@@ -165,7 +179,8 @@ export default function ShiftEditModal({
                 type="number"
                 value={manualAmount}
                 onChange={(e) => setManualAmount(e.target.value)}
-                helperText="今回のみ設定済みの金額から変更した金額で計算されます"
+                helperText="設定済みの金額を上書きします"
+                sx={{ "& .MuiInputBase-root": { bgcolor: inputBgColor } }}
               />
               <TextField
                 label="振込予定日"
@@ -173,6 +188,7 @@ export default function ShiftEditModal({
                 InputLabelProps={{ shrink: true }}
                 value={manualDate}
                 onChange={(e) => setManualDate(e.target.value)}
+                sx={{ "& .MuiInputBase-root": { bgcolor: inputBgColor } }}
               />
             </Box>
           )}

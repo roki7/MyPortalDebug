@@ -23,12 +23,13 @@ import {
   ListItemIcon,
   ListItemText,
   Divider,
-  Snackbar,
-  Alert,
-  TextField,
   Switch,
   FormControlLabel,
+  CssBaseline,
 } from "@mui/material";
+import { ThemeProvider } from "@mui/material/styles";
+import { themeMap } from "./theme";
+
 import {
   CalendarMonth,
   AccountBalance,
@@ -45,9 +46,6 @@ import {
   Apps,
   Groups,
   Person,
-  BeachAccess,
-  Close,
-  LocationOn,
 } from "@mui/icons-material";
 import { format, addMonths, subMonths, parse } from "date-fns";
 import ShiftEditModal from "./components/ShiftEditModal";
@@ -93,25 +91,21 @@ import ReloadPrompt from "./components/ReloadPrompt";
 import MyLinksTab from "./components/MyLinksTab";
 
 export default function MainApp() {
-  // ★修正: canSaveCloud, canShareGroup を取得
   const {
     currentUser,
-    isPremium,
     userProfile,
     login,
     logout,
     canSaveCloud,
     canShareGroup,
   } = useAuth();
+
   const [isLoaded, setIsLoaded] = useState(false);
   const [tabIndex, setTabIndex] = useState(0);
   const [openDrawer, setOpenDrawer] = useState(false);
   const [viewMode, setViewMode] = useState("personal");
-
-  // 世帯合算表示スイッチ
   const [isHousehold, setIsHousehold] = useState(false);
 
-  // 仕事編集ダイアログの状態管理
   const [jobDialogOpen, setJobDialogOpen] = useState(false);
   const [editingJob, setEditingJob] = useState(null);
 
@@ -153,10 +147,13 @@ export default function MainApp() {
   const [realtimeLabel, setRealtimeLabel] = useState("");
   const [now, setNow] = useState(new Date());
 
+  // テーマ設定の取得
+  const currentThemeMode = settings.theme || "light";
+  const currentTheme = themeMap[currentThemeMode];
+
   useEffect(() => {
     const init = async () => {
       try {
-        // ★修正: loadData に canSaveCloud を渡す
         const data = await loadData(currentUser, canSaveCloud);
         const d = data?.personal || {};
         setSettings(d.settings || INITIAL_SETTINGS);
@@ -178,7 +175,7 @@ export default function MainApp() {
       }
     };
     init();
-  }, [currentUser, userProfile, canSaveCloud]); // canSaveCloud 変更時にも再読み込み（プラン変更対応）
+  }, [currentUser, userProfile, canSaveCloud]);
 
   useEffect(() => {
     if (userProfile?.groupId && (viewMode === "shared" || isHousehold)) {
@@ -192,7 +189,6 @@ export default function MainApp() {
   useEffect(() => {
     if (!isLoaded) return;
     const timer = setTimeout(() => {
-      // ★修正: saveData に canSaveCloud を渡す
       saveData(
         currentUser,
         {
@@ -343,10 +339,6 @@ export default function MainApp() {
 
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
-  const handleDateChange = (e) => {
-    if (e.target.value)
-      setCurrentDate(parse(e.target.value, "yyyy-MM", new Date()));
-  };
 
   const handleOpenJobAdd = () => {
     setEditingJob(null);
@@ -488,17 +480,6 @@ export default function MainApp() {
     setShifts({ ...shifts, [dateStr]: [...current, newShift] });
     setOpenMenu(false);
   };
-  const handleSaveShiftTime = () => {
-    if (!editShift || !selectedDate) return;
-    const dateStr = format(selectedDate, "yyyy-MM-dd");
-    setShifts({
-      ...shifts,
-      [dateStr]: shifts[dateStr].map((s) =>
-        s.id === editShift.id ? editShift : s
-      ),
-    });
-    setEditShift(null);
-  };
   const handleDeleteShift = () => {
     if (!editShift || !selectedDate) return;
     const dateStr = format(selectedDate, "yyyy-MM-dd");
@@ -507,19 +488,6 @@ export default function MainApp() {
       [dateStr]: shifts[dateStr].filter((s) => s.id !== editShift.id),
     });
     setEditShift(null);
-  };
-  const handleUpdateShiftStatus = (status) => {
-    if (!editShift || !selectedDate) return;
-    const newStatus = editShift.status === status ? "normal" : status;
-    const updated = { ...editShift, status: newStatus };
-    const dateStr = format(selectedDate, "yyyy-MM-dd");
-    setShifts({
-      ...shifts,
-      [dateStr]: shifts[dateStr].map((s) =>
-        s.id === editShift.id ? updated : s
-      ),
-    });
-    setEditShift(updated);
   };
   const handleFullImport = (importedData) => {
     if (!importedData) return;
@@ -588,423 +556,438 @@ export default function MainApp() {
     : earnings.personalProjected;
 
   return (
-    <Container
-      maxWidth="sm"
-      sx={{
-        p: 0,
-        bgcolor: "#f5f5f5",
-        minHeight: "100vh",
-        pb: 10,
-        position: "relative",
-      }}
-    >
-      <Dialog open={kickDialog}>
-        <DialogTitle>通知</DialogTitle>
-        <DialogContent>グループから削除されました。</DialogContent>
-        <DialogActions>
-          <Button onClick={handleKickConfirm}>OK</Button>
-        </DialogActions>
-      </Dialog>
-
-      <Paper
-        elevation={3}
+    <ThemeProvider theme={currentTheme}>
+      <CssBaseline />
+      <Container
+        maxWidth="sm"
         sx={{
-          p: 2,
-          bgcolor: viewMode === "shared" ? "#1565c0" : "#212121",
-          color: "white",
-          borderRadius: "0 0 16px 16px",
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
+          p: 0,
+          bgcolor: "background.default",
+          minHeight: "100vh",
+          pb: 10,
+          position: "relative",
+          transition: "background-color 0.3s",
         }}
       >
-        {/* ★修正: 共有ボタンの表示条件を canShareGroup に変更 */}
-        {canShareGroup && userProfile?.groupId && (
-          <Box sx={{ display: "flex", justifyContent: "center", mb: 1 }}>
-            <Button
-              variant={viewMode === "personal" ? "contained" : "text"}
-              onClick={() => setViewMode("personal")}
-              size="small"
-              startIcon={<Person />}
-              sx={{
-                color: "white",
-                bgcolor:
-                  viewMode === "personal"
-                    ? "rgba(255,255,255,0.2)"
-                    : "transparent",
-                borderRadius: "20px 0 0 20px",
-              }}
-            >
-              個人
-            </Button>
-            <Button
-              variant={viewMode === "shared" ? "contained" : "text"}
-              onClick={() => setViewMode("shared")}
-              size="small"
-              startIcon={<Groups />}
-              sx={{
-                color: "white",
-                bgcolor:
-                  viewMode === "shared"
-                    ? "rgba(255,255,255,0.2)"
-                    : "transparent",
-                borderRadius: "0 20px 20px 0",
-              }}
-            >
-              共有
-            </Button>
-          </Box>
-        )}
-        <Box
+        <Dialog open={kickDialog}>
+          <DialogTitle>通知</DialogTitle>
+          <DialogContent>グループから削除されました。</DialogContent>
+          <DialogActions>
+            <Button onClick={handleKickConfirm}>OK</Button>
+          </DialogActions>
+        </Dialog>
+
+        <Paper
+          elevation={3}
           sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            mb: 1,
+            p: 2,
+            bgcolor: viewMode === "shared" ? "#1565c0" : "background.paper",
+            color: "text.primary",
+            borderRadius: "0 0 16px 16px",
+            position: "sticky",
+            top: 0,
+            zIndex: 10,
+            transition: "background-color 0.3s",
+            borderBottom: 1,
+            borderColor: "divider",
           }}
         >
-          <IconButton onClick={handlePrevMonth} size="small">
-            <ArrowBack sx={{ color: "white" }} />
-          </IconButton>
-          <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-            {format(currentDate, "yyyy年 M月")}
-          </Typography>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            {/* クラウドアイコンの表示も canSaveCloud に合わせる */}
-            <Chip
-              icon={
-                canSaveCloud ? (
-                  <CloudDone sx={{ color: "white !important" }} />
-                ) : (
-                  <CloudOff sx={{ color: "gray !important" }} />
-                )
-              }
-              label={settings.calcMode === "realtime" ? "⏱" : "✅"}
-              size="small"
-              sx={{ bgcolor: "rgba(255,255,255,0.2)", color: "white", pl: 0.5 }}
-            />
-            <LoginStatus />
-            <IconButton
-              onClick={handleNextMonth}
-              size="small"
-              sx={{ ml: -0.5 }}
-            >
-              <ArrowForward sx={{ color: "white" }} />
-            </IconButton>
-          </Box>
-        </Box>
-
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            mb: 0,
-          }}
-        >
-          <Box sx={{ display: "flex", flexDirection: "column" }}>
-            <Typography variant="caption">
-              📅 出勤: {earnings.workDays}日
-            </Typography>
-            <Typography variant="caption">
-              💰 {isHousehold ? "世帯" : "個人"}年収: ¥
-              {currentAnnualIncome.toLocaleString()}
-            </Typography>
-          </Box>
-
-          <FormControlLabel
-            control={
-              <Switch
-                checked={isHousehold}
-                onChange={(e) => setIsHousehold(e.target.checked)}
+          {canShareGroup && userProfile?.groupId && (
+            <Box sx={{ display: "flex", justifyContent: "center", mb: 1 }}>
+              <Button
+                variant={viewMode === "personal" ? "contained" : "text"}
+                onClick={() => setViewMode("personal")}
                 size="small"
-                color="warning"
+                startIcon={<Person />}
+                sx={{
+                  color: "inherit",
+                  bgcolor:
+                    viewMode === "personal"
+                      ? "rgba(255,255,255,0.2)"
+                      : "transparent",
+                  borderRadius: "20px 0 0 20px",
+                }}
+              >
+                個人
+              </Button>
+              <Button
+                variant={viewMode === "shared" ? "contained" : "text"}
+                onClick={() => setViewMode("shared")}
+                size="small"
+                startIcon={<Groups />}
+                sx={{
+                  color: "inherit",
+                  bgcolor:
+                    viewMode === "shared"
+                      ? "rgba(255,255,255,0.2)"
+                      : "transparent",
+                  borderRadius: "0 20px 20px 0",
+                }}
+              >
+                共有
+              </Button>
+            </Box>
+          )}
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              mb: 1,
+            }}
+          >
+            <IconButton onClick={handlePrevMonth} size="small">
+              <ArrowBack sx={{ color: "text.primary" }} />
+            </IconButton>
+            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
+              {format(currentDate, "yyyy年 M月")}
+            </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <Chip
+                icon={
+                  canSaveCloud ? (
+                    <CloudDone sx={{ color: "inherit !important" }} />
+                  ) : (
+                    <CloudOff sx={{ color: "gray !important" }} />
+                  )
+                }
+                label={settings.calcMode === "realtime" ? "⏱" : "✅"}
+                size="small"
+                sx={{
+                  bgcolor: "rgba(128,128,128,0.2)",
+                  color: "text.primary",
+                  pl: 0.5,
+                }}
               />
-            }
-            label={
-              <Typography variant="caption" sx={{ color: "white" }}>
-                世帯合算
+              <LoginStatus />
+              <IconButton
+                onClick={handleNextMonth}
+                size="small"
+                sx={{ ml: -0.5 }}
+              >
+                <ArrowForward sx={{ color: "text.primary" }} />
+              </IconButton>
+            </Box>
+          </Box>
+
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              mb: 0,
+            }}
+          >
+            <Box sx={{ display: "flex", flexDirection: "column" }}>
+              <Typography variant="caption">
+                📅 出勤: {earnings.workDays}日
               </Typography>
-            }
-            sx={{ mr: 0 }}
-          />
-        </Box>
+              <Typography variant="caption">
+                💰 {isHousehold ? "世帯" : "個人"}年収: ¥
+                {currentAnnualIncome.toLocaleString()}
+              </Typography>
+            </Box>
 
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-end",
-            mt: 1,
-          }}
-        >
-          <Box>
-            <Typography variant="caption" sx={{ opacity: 0.7 }}>
-              {realtimeLabel}
-            </Typography>
-            <Typography variant="h4" fontWeight="bold">
-              ¥{currentRealtimeEarnings.toLocaleString()}
-            </Typography>
-          </Box>
-          <Box sx={{ textAlign: "right" }}>
-            <Typography variant="caption" sx={{ opacity: 0.7 }}>
-              着地見込み
-            </Typography>
-            <Typography variant="h6">
-              ¥{currentProjected?.toLocaleString() || 0}
-            </Typography>
-          </Box>
-        </Box>
-        <LinearProgress
-          variant="determinate"
-          value={
-            currentProjected > 0
-              ? (currentRealtimeEarnings / currentProjected) * 100
-              : 0
-          }
-          sx={{
-            mt: 1,
-            height: 6,
-            borderRadius: 3,
-            bgcolor: "rgba(255,255,255,0.1)",
-            "& .MuiLinearProgress-bar": { bgcolor: "#00e676" },
-          }}
-        />
-      </Paper>
-
-      <Box sx={{ p: 2 }}>
-        {tabIndex === 0 && (
-          <CalendarTab
-            currentDate={currentDate}
-            shifts={displayShifts}
-            jobs={displayJobs}
-            weatherData={weatherData}
-            onDateClick={(d) => {
-              setSelectedDate(d);
-              setOpenMenu(true);
-            }}
-            onShiftClick={(s, d) => {
-              setSelectedDate(d);
-              const job = jobs.find((j) => String(j.id) === String(s.jobId));
-              let initBreak = s.breakTime;
-              if (
-                initBreak === undefined ||
-                initBreak === null ||
-                initBreak === ""
-              ) {
-                initBreak = job?.breakTime || 0;
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={isHousehold}
+                  onChange={(e) => setIsHousehold(e.target.checked)}
+                  size="small"
+                  color="warning"
+                />
               }
-              setEditShift({ ...s, breakTime: initBreak });
+              label={
+                <Typography variant="caption" sx={{ color: "text.primary" }}>
+                  世帯合算
+                </Typography>
+              }
+              sx={{ mr: 0 }}
+            />
+          </Box>
+
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+              mt: 1,
+            }}
+          >
+            <Box>
+              <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                {realtimeLabel}
+              </Typography>
+              <Typography variant="h4" fontWeight="bold">
+                ¥{currentRealtimeEarnings.toLocaleString()}
+              </Typography>
+            </Box>
+            <Box sx={{ textAlign: "right" }}>
+              <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                着地見込み
+              </Typography>
+              <Typography variant="h6">
+                ¥{currentProjected?.toLocaleString() || 0}
+              </Typography>
+            </Box>
+          </Box>
+          <LinearProgress
+            variant="determinate"
+            value={
+              currentProjected > 0
+                ? (currentRealtimeEarnings / currentProjected) * 100
+                : 0
+            }
+            sx={{
+              mt: 1,
+              height: 6,
+              borderRadius: 3,
+              bgcolor: "rgba(128,128,128,0.2)",
+              "& .MuiLinearProgress-bar": { bgcolor: "#00e676" },
             }}
           />
-        )}
+        </Paper>
 
-        {tabIndex === 1 && (
-          <FinanceTab
-            accounts={accounts}
-            payments={payments}
-            templates={templates}
-            myLinks={myLinks}
-            currentDate={currentDate}
-            onAddAccount={handleAddAccount}
-            onUpdateAccount={handleUpdateAccount}
-            onAddPayment={handleAddPayment}
-            onUpdatePayment={handleUpdatePayment}
-            onAddTemplate={handleAddTemplate}
-            onDeleteTemplate={handleDeleteTemplate}
-            onAddMyLink={handleAddMyLink}
-            onDeleteMyLink={handleDeleteMyLink}
-            recurring={recurring}
-            onAddRecurring={handleAddRecurring}
-            onUpdateRecurring={handleUpdateRecurring}
-            onDeleteRecurring={handleDeleteRecurring}
-            onUpdateBalance={(id, val) =>
-              setAccounts(
-                accounts.map((a) =>
-                  a.id === id ? { ...a, balance: parseInt(val) } : a
-                )
-              )
-            }
-            onTogglePaid={(id) =>
-              setPayments(
-                payments.map((p) => (p.id === id ? { ...p, paid: !p.paid } : p))
-              )
-            }
-            onPrevMonth={handlePrevMonth}
-            onNextMonth={handleNextMonth}
-          />
-        )}
-
-        {tabIndex === 2 && (
-          <ShoppingTab
-            shopping={shopping}
-            onUpdateShopping={setShopping}
-            onUpdateStock={handleUpdateStock}
-            onAddPayment={handleAddPayment}
-            accounts={accounts}
-          />
-        )}
-        {tabIndex === 3 && (
-          <MyLinksTab
-            myLinks={myLinks}
-            linkCategories={linkCategories}
-            onAddMyLink={handleAddMyLink}
-            onUpdateMyLink={handleUpdateMyLink}
-            onDeleteMyLink={handleDeleteMyLink}
-            onAddCategory={handleAddCategory}
-            onDeleteCategory={handleDeleteCategory}
-            onEditCategory={handleEditCategory}
-          />
-        )}
-        {tabIndex === 4 && (
-          <ReportTab
-            annualIncome={currentAnnualIncome}
-            summary={annualSummary}
-            targetLimit={settings.targetLimit}
-            accounts={accounts}
-            totalFixedCost={totalFixedCost}
-          />
-        )}
-        {tabIndex === 5 && (
-          <MotivationTab
-            currentEarnings={earnings.personalFixed}
-            fixedCost={totalFixedCost}
-          />
-        )}
-
-        {tabIndex === 6 && (
-          <SettingsTab
-            jobs={jobs}
-            settings={settings}
-            members={members}
-            onAddJob={handleAddJob}
-            onUpdateJob={handleUpdateJob}
-            onDeleteJob={handleDeleteJob}
-            onUpdateSettings={setSettings}
-            onGenerateAnnualShifts={handleGenerateAnnualShifts}
-            onGenerateRange={handleGenerateRange}
-            onDeleteRange={handleDeleteRange}
-            onUpdateMembers={setMembers}
-            fullData={{
-              settings,
-              members,
-              jobs,
-              shifts,
-              accounts,
-              recurring,
-              payments,
-              templates,
-              shopping,
-              myLinks,
-              linkCategories,
-            }}
-            onImportData={handleFullImport}
-            onEditJobRequest={handleOpenJobEdit}
-            onAddJobRequest={handleOpenJobAdd}
-            // ★追加: 共有データを渡す
-            sharedDocs={sharedDocs}
-          />
-        )}
-      </Box>
-
-      {/* 以下省略（変更なし） */}
-      <Paper
-        sx={{
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          zIndex: 100,
-          pb: "env(safe-area-inset-bottom)",
-        }}
-        elevation={10}
-      >
-        <Tabs
-          value={tabIndex < 4 ? tabIndex : false}
-          onChange={(e, v) => v !== false && setTabIndex(v)}
-          variant="fullWidth"
-          centered
-        >
-          {mainTabs.map((tab, i) => (
-            <Tab key={i} icon={tab.icon} label={tab.label} value={i} />
-          ))}
-        </Tabs>
-      </Paper>
-
-      <Fab
-        color="secondary"
-        sx={{
-          position: "fixed",
-          bottom: "calc(120px + env(safe-area-inset-bottom))",
-          right: 16,
-          zIndex: 100,
-        }}
-        onClick={() => setOpenDrawer(true)}
-      >
-        <MoreHoriz />
-      </Fab>
-      <Drawer
-        anchor="bottom"
-        open={openDrawer}
-        onClose={() => setOpenDrawer(false)}
-        PaperProps={{
-          sx: {
-            borderRadius: "16px 16px 0 0",
-            pb: "env(safe-area-inset-bottom)",
-          },
-        }}
-      >
         <Box sx={{ p: 2 }}>
-          <List>
-            {moreTabs.map((tab) => (
-              <React.Fragment key={tab.index}>
-                <ListItem
-                  button
-                  onClick={() => {
-                    setTabIndex(tab.index);
-                    setOpenDrawer(false);
-                  }}
-                >
-                  <ListItemIcon>{tab.icon}</ListItemIcon>
-                  <ListItemText primary={tab.label} />
-                </ListItem>
-                <Divider />
-              </React.Fragment>
-            ))}
-          </List>
+          {tabIndex === 0 && (
+            <CalendarTab
+              currentDate={currentDate}
+              shifts={displayShifts}
+              jobs={displayJobs}
+              weatherData={weatherData}
+              onDateClick={(d) => {
+                setSelectedDate(d);
+                setOpenMenu(true);
+              }}
+              onShiftClick={(s, d) => {
+                setSelectedDate(d);
+                const job = jobs.find((j) => String(j.id) === String(s.jobId));
+                let initBreak = s.breakTime;
+                if (
+                  initBreak === undefined ||
+                  initBreak === null ||
+                  initBreak === ""
+                ) {
+                  initBreak = job?.breakTime || 0;
+                }
+                setEditShift({ ...s, breakTime: initBreak });
+              }}
+            />
+          )}
+
+          {tabIndex === 1 && (
+            <FinanceTab
+              accounts={accounts}
+              payments={payments}
+              templates={templates}
+              myLinks={myLinks}
+              currentDate={currentDate}
+              onAddAccount={handleAddAccount}
+              onUpdateAccount={handleUpdateAccount}
+              onAddPayment={handleAddPayment}
+              onUpdatePayment={handleUpdatePayment}
+              onAddTemplate={handleAddTemplate}
+              onDeleteTemplate={handleDeleteTemplate}
+              onAddMyLink={handleAddMyLink}
+              onDeleteMyLink={handleDeleteMyLink}
+              recurring={recurring}
+              onAddRecurring={handleAddRecurring}
+              onUpdateRecurring={handleUpdateRecurring}
+              onDeleteRecurring={handleDeleteRecurring}
+              onUpdateBalance={(id, val) =>
+                setAccounts(
+                  accounts.map((a) =>
+                    a.id === id ? { ...a, balance: parseInt(val) } : a
+                  )
+                )
+              }
+              onTogglePaid={(id) =>
+                setPayments(
+                  payments.map((p) =>
+                    p.id === id ? { ...p, paid: !p.paid } : p
+                  )
+                )
+              }
+              onPrevMonth={handlePrevMonth}
+              onNextMonth={handleNextMonth}
+            />
+          )}
+
+          {tabIndex === 2 && (
+            <ShoppingTab
+              shopping={shopping}
+              onUpdateShopping={setShopping}
+              onUpdateStock={handleUpdateStock}
+              onAddPayment={handleAddPayment}
+              accounts={accounts}
+            />
+          )}
+          {tabIndex === 3 && (
+            <MyLinksTab
+              myLinks={myLinks}
+              linkCategories={linkCategories}
+              onAddMyLink={handleAddMyLink}
+              onUpdateMyLink={handleUpdateMyLink}
+              onDeleteMyLink={handleDeleteMyLink}
+              onAddCategory={handleAddCategory}
+              onDeleteCategory={handleDeleteCategory}
+              onEditCategory={handleEditCategory}
+            />
+          )}
+          {tabIndex === 4 && (
+            <ReportTab
+              annualIncome={currentAnnualIncome}
+              summary={annualSummary}
+              targetLimit={settings.targetLimit}
+              accounts={accounts}
+              totalFixedCost={totalFixedCost}
+            />
+          )}
+          {tabIndex === 5 && (
+            <MotivationTab
+              currentEarnings={earnings.personalFixed}
+              fixedCost={totalFixedCost}
+            />
+          )}
+
+          {tabIndex === 6 && (
+            <SettingsTab
+              jobs={jobs}
+              settings={settings}
+              members={members}
+              onAddJob={handleAddJob}
+              onUpdateJob={handleUpdateJob}
+              onDeleteJob={handleDeleteJob}
+              onUpdateSettings={setSettings}
+              onGenerateAnnualShifts={handleGenerateAnnualShifts}
+              onGenerateRange={handleGenerateRange}
+              onDeleteRange={handleDeleteRange}
+              onUpdateMembers={setMembers}
+              fullData={{
+                settings,
+                members,
+                jobs,
+                shifts,
+                accounts,
+                recurring,
+                payments,
+                templates,
+                shopping,
+                myLinks,
+                linkCategories,
+              }}
+              onImportData={handleFullImport}
+              onEditJobRequest={handleOpenJobEdit}
+              onAddJobRequest={handleOpenJobAdd}
+              sharedDocs={sharedDocs}
+            />
+          )}
         </Box>
-      </Drawer>
 
-      <ShiftDrawer
-        open={openMenu}
-        onClose={() => setOpenMenu(false)}
-        jobs={jobs}
-        members={members}
-        selectedDate={selectedDate}
-        onAddShift={handleAddShift}
-        onEditJobRequest={handleOpenJobEdit}
-        onAddJobRequest={handleOpenJobAdd}
-      />
+        <Paper
+          sx={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 100,
+            pb: "env(safe-area-inset-bottom)",
+            bgcolor: "background.paper",
+            color: "text.primary",
+            borderTop: 1,
+            borderColor: "divider",
+          }}
+          elevation={10}
+        >
+          <Tabs
+            value={tabIndex < 4 ? tabIndex : false}
+            onChange={(e, v) => v !== false && setTabIndex(v)}
+            variant="fullWidth"
+            centered
+            textColor="inherit"
+            indicatorColor="secondary"
+          >
+            {mainTabs.map((tab, i) => (
+              <Tab key={i} icon={tab.icon} label={tab.label} value={i} />
+            ))}
+          </Tabs>
+        </Paper>
 
-      {editShift && (
-        <ShiftEditModal
-          open={!!editShift}
-          onClose={() => setEditShift(null)}
-          shift={editShift}
-          job={jobs.find((j) => String(j.id) === String(editShift.jobId))}
-          onUpdate={handleUpdateShiftFull}
-          onDelete={handleDeleteShift}
+        <Fab
+          color="secondary"
+          sx={{
+            position: "fixed",
+            bottom: "calc(120px + env(safe-area-inset-bottom))",
+            right: 16,
+            zIndex: 100,
+          }}
+          onClick={() => setOpenDrawer(true)}
+        >
+          <MoreHoriz />
+        </Fab>
+        <Drawer
+          anchor="bottom"
+          open={openDrawer}
+          onClose={() => setOpenDrawer(false)}
+          PaperProps={{
+            sx: {
+              borderRadius: "16px 16px 0 0",
+              pb: "env(safe-area-inset-bottom)",
+            },
+          }}
+        >
+          <Box sx={{ p: 2 }}>
+            <List>
+              {moreTabs.map((tab) => (
+                <React.Fragment key={tab.index}>
+                  <ListItem
+                    button
+                    onClick={() => {
+                      setTabIndex(tab.index);
+                      setOpenDrawer(false);
+                    }}
+                  >
+                    <ListItemIcon>{tab.icon}</ListItemIcon>
+                    <ListItemText primary={tab.label} />
+                  </ListItem>
+                  <Divider />
+                </React.Fragment>
+              ))}
+            </List>
+          </Box>
+        </Drawer>
+
+        <ShiftDrawer
+          open={openMenu}
+          onClose={() => setOpenMenu(false)}
+          jobs={jobs}
+          members={members}
+          selectedDate={selectedDate}
+          onAddShift={handleAddShift}
+          onEditJobRequest={handleOpenJobEdit}
+          onAddJobRequest={handleOpenJobAdd}
         />
-      )}
 
-      <JobEditDialog
-        open={jobDialogOpen}
-        onClose={() => setJobDialogOpen(false)}
-        job={editingJob}
-        members={members}
-        onSave={handleSaveJob}
-      />
-      <ReloadPrompt />
-    </Container>
+        {editShift && (
+          <ShiftEditModal
+            open={!!editShift}
+            onClose={() => setEditShift(null)}
+            shift={editShift}
+            job={jobs.find((j) => String(j.id) === String(editShift.jobId))}
+            onUpdate={handleUpdateShiftFull}
+            onDelete={handleDeleteShift}
+          />
+        )}
+
+        <JobEditDialog
+          open={jobDialogOpen}
+          onClose={() => setJobDialogOpen(false)}
+          job={editingJob}
+          members={members}
+          onSave={handleSaveJob}
+        />
+        <ReloadPrompt />
+      </Container>
+    </ThemeProvider>
   );
 }

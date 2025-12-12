@@ -1,5 +1,6 @@
+// src/components/CalendarTab.jsx
 import React from "react";
-import { Box, Paper, Typography, Grid } from "@mui/material";
+import { Box, Paper, Typography, Grid, useTheme } from "@mui/material"; // useTheme追加
 import {
   format,
   startOfMonth,
@@ -19,19 +20,17 @@ import {
   Thunderstorm,
   TrendingDown,
 } from "@mui/icons-material";
-// holiday-jp ライブラリを使用
 import { isHoliday } from "holiday-jp";
 
 const getWeatherIcon = (code) => {
   if (code === undefined) return null;
   if (code <= 1) return <WbSunny sx={{ fontSize: 16, color: "orange" }} />;
-  if (code <= 3) return <Cloud sx={{ fontSize: 16, color: "gray" }} />;
+  if (code <= 3) return <Cloud sx={{ fontSize: 16, color: "gray" }} />; // 修正後もグレーだが背景があれば見える
   if (code <= 67) return <Umbrella sx={{ fontSize: 16, color: "#4fc3f7" }} />;
   if (code <= 77) return <AcUnit sx={{ fontSize: 16, color: "cyan" }} />;
   return <Thunderstorm sx={{ fontSize: 16, color: "purple" }} />;
 };
 
-// 気圧アイコン
 const getPressureIcon = (pressure) => {
   if (!pressure) return null;
   if (pressure < 1005)
@@ -49,6 +48,9 @@ export default function CalendarTab({
   onDateClick,
   onShiftClick,
 }) {
+  const theme = useTheme(); // テーマ取得
+  const isDark = theme.palette.mode === "dark";
+
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(monthStart);
   const startDate = startOfWeek(monthStart);
@@ -57,8 +59,15 @@ export default function CalendarTab({
   const calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
   const weekDays = ["日", "月", "火", "水", "木", "金", "土"];
 
+  // 背景色の定義
+  const headerBg = isDark ? "#1c1f2e" : "#fafafa";
+  const cellBgCurrent = isDark ? "#171a23" : "white"; // 今月: 少し明るいグレー vs 白
+  const cellBgOther = isDark ? "#0f1118" : "#f9f9f9"; // 月外: 暗いグレー vs 薄グレー
+  const cellBgToday = isDark ? "rgba(0, 229, 255, 0.15)" : "#e3f2fd"; // 今日: Cyan系 vs 青系
+  const borderColor = isDark ? "rgba(255,255,255,0.1)" : "#e0e0e0";
+
   return (
-    <Box sx={{ border: "1px solid #e0e0e0", borderBottom: "none" }}>
+    <Box sx={{ border: `1px solid ${borderColor}`, borderBottom: "none" }}>
       {/* 曜日ヘッダー */}
       <Grid container spacing={0}>
         {weekDays.map((day, index) => (
@@ -68,9 +77,9 @@ export default function CalendarTab({
             key={day}
             sx={{
               textAlign: "center",
-              bgcolor: "#fafafa",
-              borderBottom: "1px solid #e0e0e0",
-              borderRight: index !== 6 ? "1px solid #e0e0e0" : "none",
+              bgcolor: headerBg,
+              borderBottom: `1px solid ${borderColor}`,
+              borderRight: index !== 6 ? `1px solid ${borderColor}` : "none",
               py: 0.5,
             }}
           >
@@ -78,7 +87,11 @@ export default function CalendarTab({
               variant="caption"
               sx={{
                 color:
-                  index === 0 ? "red" : index === 6 ? "blue" : "text.secondary",
+                  index === 0
+                    ? "red"
+                    : index === 6
+                    ? "#448aff"
+                    : "text.secondary", // 青を少し明るく
                 fontWeight: "bold",
               }}
             >
@@ -103,13 +116,13 @@ export default function CalendarTab({
           let dateColor = isCurrentMonth ? "text.primary" : "text.disabled";
           if (holiday) dateColor = "red";
           else if (dayIndex === 0) dateColor = "red";
-          else if (dayIndex === 6) dateColor = "blue";
+          else if (dayIndex === 6) dateColor = "#448aff";
 
           const bgColor = isToday
-            ? "#e3f2fd"
+            ? cellBgToday
             : isCurrentMonth
-            ? "white"
-            : "#f9f9f9";
+            ? cellBgCurrent
+            : cellBgOther;
           const isRightEdge = (index + 1) % 7 === 0;
 
           return (
@@ -126,16 +139,18 @@ export default function CalendarTab({
                   height: 100,
                   p: 0.5,
                   bgcolor: bgColor,
-                  borderBottom: "1px solid #e0e0e0",
-                  borderRight: isRightEdge ? "none" : "1px solid #e0e0e0",
+                  borderBottom: `1px solid ${borderColor}`,
+                  borderRight: isRightEdge
+                    ? "none"
+                    : `1px solid ${borderColor}`,
                   display: "flex",
                   flexDirection: "column",
                   cursor: "pointer",
                   position: "relative",
-                  "&:hover": { bgcolor: "#f5f5f5" },
+                  "&:hover": { bgcolor: isDark ? "#2c3142" : "#f5f5f5" }, // ホバー色
                 }}
               >
-                {/* 日付・祝日名・天気・気圧 */}
+                {/* 日付・祝日・天気 */}
                 <Box
                   sx={{
                     display: "flex",
@@ -173,13 +188,31 @@ export default function CalendarTab({
                       </Typography>
                     )}
                   </Box>
+
+                  {/* 天気・気圧（背景座布団を追加して視認性アップ） */}
                   <Box sx={{ display: "flex", gap: 0.5 }}>
-                    {weather && getWeatherIcon(weather.code)}
+                    {weather && (
+                      <Box
+                        sx={{
+                          bgcolor: isDark
+                            ? "rgba(255,255,255,0.1)"
+                            : "transparent",
+                          borderRadius: "50%",
+                          width: 18,
+                          height: 18,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {getWeatherIcon(weather.code)}
+                      </Box>
+                    )}
                     {weather && getPressureIcon(weather.pressure)}
                   </Box>
                 </Box>
 
-                {/* シフト表示エリア */}
+                {/* シフト表示エリア (既存ロジック維持) */}
                 <Box
                   sx={{
                     flexGrow: 1,
@@ -191,18 +224,16 @@ export default function CalendarTab({
                 >
                   {dayShifts.slice(0, 4).map((shift) => {
                     const job = jobs.find((j) => j.id === shift.jobId);
-
-                    // ★ステータスによる表示切り替えロジック
                     let displayName = shift.customName || job?.name || "不明";
                     let displayColor = shift.color || job?.color || "#999";
                     let textDecor = "none";
 
                     if (shift.status === "paid_leave") {
-                      displayName = "㊗️ " + displayName; // 名前の前にアイコン
-                      displayColor = "#ff9800"; // オレンジ
+                      displayName = "㊗️ " + displayName;
+                      displayColor = "#ff9800";
                     } else if (shift.status === "absence") {
                       displayName = "❌ " + displayName;
-                      displayColor = "#9e9e9e"; // グレー
+                      displayColor = "#9e9e9e";
                       textDecor = "line-through";
                     }
 
@@ -237,7 +268,7 @@ export default function CalendarTab({
                       variant="caption"
                       sx={{
                         fontSize: "0.5rem",
-                        color: "gray",
+                        color: "text.secondary",
                         textAlign: "center",
                       }}
                     >
@@ -253,7 +284,7 @@ export default function CalendarTab({
                     sx={{
                       fontSize: "0.6rem",
                       textAlign: "right",
-                      color: "#4caf50",
+                      color: isDark ? "#69f0ae" : "#4caf50", // 暗背景なら明るい緑
                       fontWeight: "bold",
                       mt: "auto",
                     }}
@@ -261,11 +292,11 @@ export default function CalendarTab({
                     ¥
                     {dayShifts
                       .reduce((acc, s) => {
+                        /* 金額計算ロジック維持 */
                         const j = jobs.find((x) => x.id === s.jobId);
                         if (!j && !s.amount) return acc;
                         if (s.amount) return acc + s.amount;
                         if (j && j.type === "hourly" && s.start && s.end) {
-                          // 休憩時間の計算も考慮
                           const st = new Date(`1970-01-01T${s.start}`);
                           const en = new Date(`1970-01-01T${s.end}`);
                           const brk =
