@@ -393,7 +393,59 @@ export default function SettingsTab({
         </CardContent>
       </Card>
 
-      {/* 5. 共有管理 (対象者のみ表示) */}
+      {/* 5. 計算・表示設定（復元） */}
+      <Typography variant="h6" gutterBottom>
+        🧮 計算・表示設定
+      </Typography>
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <FormControl fullWidth size="small">
+                <InputLabel>現在の金額のカウント方法</InputLabel>
+                <Select
+                  value={settings.calcTiming || "realtime"}
+                  label="現在の金額のカウント方法"
+                  onChange={(e) =>
+                    onUpdateSettings({
+                      ...settings,
+                      calcTiming: e.target.value,
+                    })
+                  }
+                >
+                  <MenuItem value="realtime">リアルタイム (分単位)</MenuItem>
+                  <MenuItem value="end_of_work">
+                    仕事が終わったらカウント
+                  </MenuItem>
+                  <MenuItem value="start_of_day">
+                    日付が変わったらカウント
+                  </MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth size="small">
+                <InputLabel>確定金額の基準月</InputLabel>
+                <Select
+                  value={settings.transferBase || "next_month"}
+                  label="確定金額の基準月"
+                  onChange={(e) =>
+                    onUpdateSettings({
+                      ...settings,
+                      transferBase: e.target.value,
+                    })
+                  }
+                >
+                  <MenuItem value="next_month">翌月振込ベース (推奨)</MenuItem>
+                  <MenuItem value="current_month">当月振込ベース</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
+      {/* 6. 共有管理 (対象者のみ表示) */}
       {canShareGroup && (
         <>
           <Typography variant="h6" gutterBottom>
