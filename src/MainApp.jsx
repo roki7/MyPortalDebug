@@ -121,6 +121,7 @@ export default function MainApp() {
   const [shopping, setShopping] = useState(INITIAL_SHOPPING);
   const [myLinks, setMyLinks] = useState(INITIAL_MY_LINKS);
   const [linkCategories, setLinkCategories] = useState(LINK_CATEGORIES);
+  const [wishlist, setWishlist] = useState([]);
 
   const [sharedDocs, setSharedDocs] = useState([]);
   const [kickDialog, setKickDialog] = useState(false);
@@ -161,6 +162,7 @@ export default function MainApp() {
         const data = await loadData(currentUser, canSaveCloud);
         const d = data?.personal || {};
         setSettings(d.settings || INITIAL_SETTINGS);
+        setWishlist(d.wishlist || []);
         setMembers(d.members || INITIAL_MEMBERS);
         setJobs(d.jobs || INITIAL_JOBS);
         setShifts(d.shifts || {});
@@ -207,6 +209,7 @@ export default function MainApp() {
           shopping,
           myLinks,
           linkCategories,
+          wishlist,
         },
         userProfile?.groupId,
         canSaveCloud
@@ -229,7 +232,17 @@ export default function MainApp() {
     isLoaded,
     userProfile,
     canSaveCloud,
+    wishlist,
   ]);
+
+  const handleAddWishlist = (item) => {
+    // 追加ロジックはMotivationTab側で制限をかけるが、念のためここでも
+    setWishlist((prev) => [...prev, item]);
+  };
+
+  const handleDeleteWishlist = (id) => {
+    setWishlist((prev) => prev.filter((i) => i.id !== id));
+  };
 
   const fullMergedData = useMemo(() => {
     return mergeSharedData({ uid: currentUser?.uid, shifts, jobs }, sharedDocs);
@@ -793,7 +806,6 @@ export default function MainApp() {
               }}
             />
           )}
-
           {tabIndex === 1 && (
             <FinanceTab
               accounts={accounts}
@@ -831,7 +843,6 @@ export default function MainApp() {
               onNextMonth={handleNextMonth}
             />
           )}
-
           {tabIndex === 2 && (
             <ShoppingTab
               shopping={shopping}
@@ -867,6 +878,12 @@ export default function MainApp() {
             <MotivationTab
               currentEarnings={earnings.personalFixed}
               fixedCost={totalFixedCost}
+              settings={settings} // ★追加: 生活費設定のため
+              onUpdateSettings={setSettings} // ★追加: 生活費保存のため
+              isPremium={true} // ★仮でtrue（ここをfalseにすると制限動作を確認できます）
+              wishlist={wishlist} // ★追加
+              onAddWishlist={handleAddWishlist} // ★追加
+              onDeleteWishlist={handleDeleteWishlist} // ★追加
             />
           )}
 
