@@ -103,6 +103,7 @@ export default function MainApp() {
     logout,
     canSaveCloud,
     canShareGroup,
+    isPremium,
   } = useAuth();
 
   const [isLoaded, setIsLoaded] = useState(false);
@@ -594,7 +595,9 @@ export default function MainApp() {
   const moreTabs = [
     { icon: <Assessment />, label: "分析", index: 4 },
     { icon: <EmojiEvents />, label: "モチベ", index: 5 },
-    { icon: <CardGiftcard />, label: "ポイ活", index: 7 }, // ★追加
+    ...(isPremium
+      ? [{ icon: <CardGiftcard />, label: "ポイ活", index: 7 }]
+      : []),
     { icon: <Settings />, label: "設定", index: 6 },
   ];
 
@@ -906,7 +909,7 @@ export default function MainApp() {
               fixedCost={totalFixedCost}
               settings={settings}
               onUpdateSettings={setSettings}
-              isPremium={true}
+              isPremium={isPremium}
               wishlist={wishlist}
               onAddWishlist={handleAddWishlist}
               onDeleteWishlist={handleDeleteWishlist}
@@ -918,7 +921,7 @@ export default function MainApp() {
             <PointTab
               points={points}
               onAddPoints={handleAddPoints}
-              isPremium={true}
+              isPremium={isPremium}
             />
           )}
 
