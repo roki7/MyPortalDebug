@@ -46,7 +46,7 @@ import {
   Apps,
   Groups,
   Person,
-  CardGiftcard, // ★ポイ活アイコン
+  CardGiftcard,
 } from "@mui/icons-material";
 import { format, addMonths, subMonths } from "date-fns";
 import ShiftEditModal from "./components/ShiftEditModal";
@@ -74,9 +74,6 @@ import {
   calculateCurrentEarnings,
   getDisplayLabel,
   filterShiftsForUser,
-  // ★グラフ用に追加していればimport (getAnnualMonthlyIncome等)
-  // もしlogic.jsに実装していない場合はエラーになるので確認してください
-  // 今回は一旦既存のimportのまま進めます
 } from "./logic";
 
 import { saveData, loadData, subscribeToSharedData } from "./storage";
@@ -93,7 +90,7 @@ import ShoppingTab from "./components/ShoppingTab";
 import ReportTab from "./components/ReportTab";
 import ReloadPrompt from "./components/ReloadPrompt";
 import MyLinksTab from "./components/MyLinksTab";
-import PointTab from "./components/PointTab"; // ★ポイ活タブ
+import PointTab from "./components/PointTab";
 
 export default function MainApp() {
   const {
@@ -127,9 +124,8 @@ export default function MainApp() {
   const [myLinks, setMyLinks] = useState(INITIAL_MY_LINKS);
   const [linkCategories, setLinkCategories] = useState(LINK_CATEGORIES);
 
-  // ★追加機能用 State
-  const [points, setPoints] = useState(0); // ポイント
-  const [wishlist, setWishlist] = useState([]); // 欲しいものリスト
+  const [points, setPoints] = useState(0);
+  const [wishlist, setWishlist] = useState([]);
 
   const [sharedDocs, setSharedDocs] = useState([]);
   const [kickDialog, setKickDialog] = useState(false);
@@ -157,32 +153,70 @@ export default function MainApp() {
   const [realtimeLabel, setRealtimeLabel] = useState("");
   const [now, setNow] = useState(new Date());
 
-  // テーマ設定
   const currentThemeMode = settings.theme || "light";
   const currentTheme = themeMap[currentThemeMode];
   const isNeon = currentThemeMode === "neon";
 
-  // 初期ロード
+  // ★修正: データ読み込み時にローカルデータとマージするロジックを追加
   useEffect(() => {
     const init = async () => {
       try {
+        // 1. まずローカルの最新状態を取得（ログアウト中に編集したデータ）
+        const localRaw = localStorage.getItem("shift_app_v1");
+        const localData = localRaw ? JSON.parse(localRaw) : {};
+
+        // 2. クラウドからデータを取得
         const data = await loadData(currentUser, canSaveCloud);
         const d = data?.personal || {};
-        setSettings(d.settings || INITIAL_SETTINGS);
-        setMembers(d.members || INITIAL_MEMBERS);
-        setJobs(d.jobs || INITIAL_JOBS);
-        setShifts(d.shifts || {});
-        setAccounts(d.accounts || INITIAL_ACCOUNTS);
-        setRecurring(d.recurring || INITIAL_RECURRING);
-        setPayments(d.payments || []);
-        setTemplates(d.templates || INITIAL_PAYMENT_TEMPLATES);
-        setShopping(d.shopping || INITIAL_SHOPPING);
-        if (d.myLinks) setMyLinks(d.myLinks);
-        if (d.linkCategories) setLinkCategories(d.linkCategories);
 
-        // ★追加データの読み込み
-        setPoints(d.points || 0);
-        setWishlist(d.wishlist || []);
+        // 3. マージ用ヘルパー関数（IDベースで重複除外）
+        const mergeArrays = (cloudArr, localArr) => {
+          if (!cloudArr && !localArr) return [];
+          if (!cloudArr) return localArr || []; // クラウドになければローカルを採用
+          if (!localArr) return cloudArr;
+
+          const cloudIds = new Set(cloudArr.map((i) => i.id));
+          const merged = [...cloudArr];
+
+          // ローカルにあってクラウドにないもの（新規追加分）を追加
+          localArr.forEach((item) => {
+            if (!cloudIds.has(item.id)) {
+              merged.push(item);
+            }
+          });
+          return merged;
+        };
+
+        // 4. ステートにセット（クラウド優先だが、クラウドが空ならローカルを使う）
+        setSettings(d.settings || localData.settings || INITIAL_SETTINGS);
+        setMembers(d.members || localData.members || INITIAL_MEMBERS);
+        setJobs(d.jobs || localData.jobs || INITIAL_JOBS);
+        setShifts(d.shifts || localData.shifts || {});
+        setAccounts(d.accounts || localData.accounts || INITIAL_ACCOUNTS);
+        setRecurring(d.recurring || localData.recurring || INITIAL_RECURRING);
+        setPayments(d.payments || localData.payments || []);
+        setTemplates(
+          d.templates || localData.templates || INITIAL_PAYMENT_TEMPLATES
+        );
+        setShopping(d.shopping || localData.shopping || INITIAL_SHOPPING);
+
+        // 配列データはマージする（これでログアウト中の追加分が復活します）
+        setMyLinks(mergeArrays(d.myLinks, localData.myLinks));
+        setWishlist(mergeArrays(d.wishlist, localData.wishlist));
+
+        // カテゴリは設定系なのでクラウド優先
+        if (d.linkCategories) setLinkCategories(d.linkCategories);
+        else if (localData.linkCategories)
+          setLinkCategories(localData.linkCategories);
+
+        // ポイントは大きい方を採用、またはクラウドが未定義ならローカル
+        const cloudPoints = d.points;
+        const localPoints = localData.points || 0;
+        if (cloudPoints !== undefined && cloudPoints !== null) {
+          setPoints(cloudPoints);
+        } else {
+          setPoints(localPoints);
+        }
 
         setIsLoaded(true);
         if (userProfile?.kickedFrom) setKickDialog(true);
@@ -194,7 +228,6 @@ export default function MainApp() {
     init();
   }, [currentUser, userProfile, canSaveCloud]);
 
-  // 共有データ購読
   useEffect(() => {
     if (userProfile?.groupId && (viewMode === "shared" || isHousehold)) {
       const unsub = subscribeToSharedData(userProfile.groupId, (docs) =>
@@ -204,7 +237,6 @@ export default function MainApp() {
     }
   }, [userProfile, viewMode, isHousehold]);
 
-  // データ保存
   useEffect(() => {
     if (!isLoaded) return;
     const timer = setTimeout(() => {
@@ -222,7 +254,6 @@ export default function MainApp() {
           shopping,
           myLinks,
           linkCategories,
-          // ★追加データを保存対象に含める
           points,
           wishlist,
         },
@@ -243,7 +274,6 @@ export default function MainApp() {
     shopping,
     myLinks,
     linkCategories,
-    // ★依存配列に追加
     points,
     wishlist,
     currentUser,
@@ -266,7 +296,6 @@ export default function MainApp() {
     ? recurring.reduce((sum, item) => sum + (parseInt(item.amount) || 0), 0)
     : 0;
 
-  // --- 各種ハンドラ ---
   const handleKickConfirm = async () => {
     if (currentUser)
       await updateDoc(doc(db, "users", currentUser.uid), {
@@ -276,7 +305,6 @@ export default function MainApp() {
     setKickDialog(false);
   };
 
-  // 天気取得
   useEffect(() => {
     if (!settings?.location) return;
     const loc = settings.location;
@@ -298,7 +326,6 @@ export default function MainApp() {
       .catch(() => {});
   }, [settings.location]);
 
-  // クレカ通知
   useEffect(() => {
     const todayDay = new Date().getDate();
     const creditCards = accounts.filter((a) => a.type === "credit");
@@ -318,7 +345,6 @@ export default function MainApp() {
     });
   }, [accounts, payments, isLoaded]);
 
-  // 収益計算
   useEffect(() => {
     const r = calculateMonthlyEarnings(
       calculationShifts,
@@ -343,7 +369,6 @@ export default function MainApp() {
     setAnnualSummary(summary);
   }, [calculationShifts, calculationJobs, currentDate, settings]);
 
-  // リアルタイム計算
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(interval);
@@ -370,7 +395,6 @@ export default function MainApp() {
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
 
-  // --- CRUDハンドラ群 ---
   const handleOpenJobAdd = () => {
     setEditingJob(null);
     setJobDialogOpen(true);
@@ -452,13 +476,16 @@ export default function MainApp() {
   const handleUpdateStock = (newStockList) =>
     setShopping({ ...shopping, stock: newStockList });
 
-  // ★追加: ポイント・欲しいものリスト用ハンドラ
   const handleAddPoints = (amount) => setPoints((prev) => prev + amount);
   const handleAddWishlist = (item) => setWishlist((prev) => [...prev, item]);
   const handleDeleteWishlist = (id) =>
     setWishlist((prev) => prev.filter((i) => i.id !== id));
+  const handleUpdateWishlist = (updatedItem) => {
+    setWishlist((prev) =>
+      prev.map((item) => (item.id === updatedItem.id ? updatedItem : item))
+    );
+  };
 
-  // --- シフト生成・削除等 ---
   const handleGenerateAnnualShifts = (year) => {
     if (jobs.length === 0) {
       alert("仕事を登録してください");
@@ -548,7 +575,6 @@ export default function MainApp() {
       setShopping(importedData.shopping || shopping);
       setMyLinks(importedData.myLinks || myLinks);
       setLinkCategories(importedData.linkCategories || linkCategories);
-      // ★追加
       setPoints(importedData.points || 0);
       setWishlist(importedData.wishlist || []);
 
@@ -829,6 +855,8 @@ export default function MainApp() {
                 }
                 setEditShift({ ...s, breakTime: initBreak });
               }}
+              onPrevMonth={handlePrevMonth}
+              onNextMonth={handleNextMonth}
             />
           )}
 
@@ -898,14 +926,16 @@ export default function MainApp() {
               targetLimit={settings.targetLimit}
               accounts={accounts}
               totalFixedCost={totalFixedCost}
-              // ★ここも1つ前の機能追加で作成したロジックが必要です
-              // monthlyIncomeData={...} が必要であれば実装済みのlogic.jsから取得して渡してください
             />
           )}
-          {/* ★更新: モチベーションタブ */}
+
           {tabIndex === 5 && (
             <MotivationTab
-              currentEarnings={earnings.personalFixed}
+              currentEarnings={
+                isHousehold
+                  ? earnings.householdProjected
+                  : earnings.personalProjected
+              }
               fixedCost={totalFixedCost}
               settings={settings}
               onUpdateSettings={setSettings}
@@ -913,10 +943,10 @@ export default function MainApp() {
               wishlist={wishlist}
               onAddWishlist={handleAddWishlist}
               onDeleteWishlist={handleDeleteWishlist}
+              onUpdateWishlist={handleUpdateWishlist}
             />
           )}
 
-          {/* ★追加: ポイ活タブ */}
           {tabIndex === 7 && (
             <PointTab
               points={points}
@@ -951,7 +981,7 @@ export default function MainApp() {
                 myLinks,
                 linkCategories,
                 points,
-                wishlist, // ★追加
+                wishlist,
               }}
               onImportData={handleFullImport}
               onEditJobRequest={handleOpenJobEdit}

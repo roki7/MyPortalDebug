@@ -47,6 +47,8 @@ export default function CalendarTab({
   weatherData,
   onDateClick,
   onShiftClick,
+  onPrevMonth, // 追加
+  onNextMonth, // 追加
 }) {
   const theme = useTheme(); // テーマ取得
   const isDark = theme.palette.mode === "dark";

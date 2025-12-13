@@ -16,22 +16,21 @@ import {
   IconButton,
   Divider,
   LinearProgress,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
   Collapse,
   useTheme,
+  Grid,
+  Select, // ★追加
+  MenuItem, // ★追加
+  FormControl, // ★追加
+  InputLabel, // ★追加
 } from "@mui/material";
 import {
   Psychology,
   AutoAwesome,
-  Lock,
-  AddCircleOutline,
   DeleteOutline,
-  ExpandMore,
   ExpandLess,
-  Fastfood, // 食事・生活費アイコン用
+  Fastfood,
+  Add,
 } from "@mui/icons-material";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { format } from "date-fns";
@@ -45,39 +44,33 @@ export default function MotivationTab({
   wishlist = [],
   onAddWishlist,
   onDeleteWishlist,
+  onUpdateWishlist, // ★追加: 更新用関数
 }) {
-  const theme = useTheme(); // ★追加: テーマ取得
-  const isDark = theme.palette.mode === "dark"; // ★追加: ダークモード判定
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
 
   const [loading, setLoading] = useState(false);
   const [dailyMessage, setDailyMessage] = useState(null);
   const [error, setError] = useState(null);
 
-  // 生活費入力の開閉用
   const [showLivingInput, setShowLivingInput] = useState(false);
 
-  // 欲しいもの入力用
   const [newItemName, setNewItemName] = useState("");
   const [newItemPrice, setNewItemPrice] = useState("");
-  const [newItemPriority, setNewItemPriority] = useState(1); // 1:高, 2:中, 3:低
+  const [newItemPriority, setNewItemPriority] = useState(1);
 
-  // 生活費 (settingsから取得、なければ0)
   const livingExpenses = parseInt(settings.livingExpenses) || 0;
 
-  // 欲しいものリストの背景
   const listBgColor = isDark ? "rgba(255, 255, 255, 0.05)" : "#f9f9f9";
 
-  // AIコーチカードの背景 (ライト: 薄い黄色, ダーク: ダークグレー)
   const aiCardBgColor = isDark ? "rgba(255, 248, 225, 0.05)" : "#fff8e1";
   const aiCardBorderColor = isDark
     ? "rgba(255, 215, 0, 0.3)"
     : "secondary.main";
 
-  // AIメッセージボックスの背景 (ライト: 白, ダーク: カードより少し明るいグレー)
   const messageBoxBgColor = isDark ? theme.palette.background.paper : "white";
   const messageTextColor = isDark ? theme.palette.text.primary : "#4e342e";
 
-  // 前回のメッセージ取得用（日付チェック付き）
   useEffect(() => {
     const today = format(new Date(), "yyyy-MM-dd");
     const savedData = localStorage.getItem("gemini_daily_motivation");
@@ -89,39 +82,46 @@ export default function MotivationTab({
     }
   }, []);
 
-  // --- 計算ロジック (新) ---
-  // 本当に自由なお金 = 稼ぎ - 固定費 - 生活費
   const trueDisposableIncome = Math.max(
     0,
     currentEarnings - fixedCost - livingExpenses
   );
 
-  // 欲しいもの総額
   const totalWishlistCost = wishlist.reduce(
     (sum, item) => sum + parseInt(item.price),
     0
   );
 
-  // 残り必要な金額
   const remainingNeeded = totalWishlistCost - trueDisposableIncome;
 
-  // 進捗率
   const progress =
     totalWishlistCost > 0
       ? Math.min(100, (trueDisposableIncome / totalWishlistCost) * 100)
       : 100;
 
-  // --- ハンドラ ---
   const handleUpdateLivingExpenses = (val) => {
     onUpdateSettings({ ...settings, livingExpenses: val });
   };
 
   const handleAddItem = () => {
-    // 制限チェック
     const limit = isPremium ? 3 : 1;
     if (wishlist.length >= limit) {
       alert(isPremium ? "登録できるのは3つまでです" : "無料会員は1つまでです");
       return;
+    }
+
+    // ★チェック: 優先度1位がすでに存在する場合の警告
+    if (
+      parseInt(newItemPriority) === 1 &&
+      wishlist.some((i) => i.priority === 1)
+    ) {
+      if (
+        !window.confirm(
+          "優先度「1: 高 (Top)」は既に存在します。重複して登録しますか？"
+        )
+      ) {
+        return;
+      }
     }
 
     if (newItemName && newItemPrice) {
@@ -129,11 +129,31 @@ export default function MotivationTab({
         id: Date.now(),
         name: newItemName,
         price: parseInt(newItemPrice),
-        priority: isPremium ? newItemPriority : 1, // 無料会員は強制的に優先度1(または非表示)
+        priority: parseInt(newItemPriority), // 選択された優先度を使用
       });
       setNewItemName("");
       setNewItemPrice("");
       setNewItemPriority(1);
+    }
+  };
+
+  // ★追加: 既存アイテムの優先度変更ハンドラ
+  const handleChangeItemPriority = (item, newPriority) => {
+    // 優先度1位に変更しようとした時のチェック
+    if (
+      parseInt(newPriority) === 1 &&
+      wishlist.some((i) => i.priority === 1 && i.id !== item.id)
+    ) {
+      if (
+        !window.confirm(
+          "優先度「1: 高 (Top)」は既に存在します。重複して登録しますか？"
+        )
+      ) {
+        return;
+      }
+    }
+    if (onUpdateWishlist) {
+      onUpdateWishlist({ ...item, priority: parseInt(newPriority) });
     }
   };
 
@@ -145,13 +165,11 @@ export default function MotivationTab({
 
       if (!apiKey) throw new Error("APIキーが設定されていません");
 
-      // 前回のメッセージを取得（重複回避用）
       const savedData = localStorage.getItem("gemini_daily_motivation");
       const previousMessage = savedData
         ? JSON.parse(savedData).message
         : "特になし";
 
-      // 欲しいものリストの状況を文字列化 (優先順位順にソートして渡す)
       const sortedList = [...wishlist].sort((a, b) => a.priority - b.priority);
       const wishlistStatus =
         sortedList.length > 0
@@ -169,10 +187,10 @@ export default function MotivationTab({
         以下の詳細な収支状況をもとに、今日一日を頑張るための励ましメッセージを生成してください。
 
         【ユーザーの状況】
-        - 現在の稼ぎ: ${currentEarnings}円
+        - 現在の稼ぎ(見込み): ${currentEarnings}円
         - 月の固定費(家賃等): ${fixedCost}円
         - 設定された生活費(食費・酒・タバコ等): ${livingExpenses}円
-        - ★本当に自由に使えるお金: ${trueDisposableIncome}円
+        - ★本当に自由に使えるお金(見込み): ${trueDisposableIncome}円
           (稼ぎから固定費と生活費を引いた額)
 
         【欲しいものリスト】
@@ -213,20 +231,16 @@ export default function MotivationTab({
     }
   };
 
-  // 表示用のバランス計算（マイナスにならないように）
   const balanceDisplay = currentEarnings - fixedCost - livingExpenses;
   const isBudgetSafe = balanceDisplay >= 0;
 
-  // リストのソート（表示用）
   const displayWishlist = [...wishlist].sort((a, b) => a.priority - b.priority);
 
-  // 登録制限数
   const maxItems = isPremium ? 3 : 1;
   const isLimitReached = wishlist.length >= maxItems;
 
   return (
     <Box>
-      {/* 1. 収支状況カード */}
       <Card sx={{ mb: 2, bgcolor: "background.paper" }}>
         <CardContent sx={{ textAlign: "center" }}>
           <Typography
@@ -238,12 +252,13 @@ export default function MotivationTab({
               justifyContent: "center",
             }}
           >
-            今月のゆとり資金{" "}
+            今月のゆとり資金
             <Chip
-              label="Real"
+              label="Projected"
               size="small"
-              color="success"
-              sx={{ ml: 1, height: 20 }}
+              color="primary"
+              variant="outlined"
+              sx={{ ml: 1, height: 20, fontSize: 10 }}
             />
           </Typography>
 
@@ -258,7 +273,7 @@ export default function MotivationTab({
           >
             <Box>
               <Typography variant="caption" color="text.secondary">
-                稼ぎ
+                稼ぎ(見込)
               </Typography>
               <Typography variant="body2" color="success" fontWeight="bold">
                 +¥{currentEarnings.toLocaleString()}
@@ -289,7 +304,7 @@ export default function MotivationTab({
           <Divider sx={{ my: 1 }} />
 
           <Typography variant="caption" color="text.secondary">
-            自由に使えるお金
+            自由に使えるお金 (見込)
           </Typography>
           <Typography
             variant="h3"
@@ -300,7 +315,6 @@ export default function MotivationTab({
             {Math.abs(balanceDisplay).toLocaleString()}
           </Typography>
 
-          {/* 生活費設定アコーディオン */}
           <Box sx={{ mt: 2 }}>
             <Button
               size="small"
@@ -315,7 +329,7 @@ export default function MotivationTab({
                 <Typography
                   variant="caption"
                   display="block"
-                  sx={{ mb: 1, textAlign: "left" }}
+                  sx={{ mb: 1, textAlign: "left", color: "black" }}
                 >
                   毎月大体かかる生活費（食事、お酒、おやつ、タバコなど）を入力してください。これを引いた額を「自由なお金」として計算します。
                 </Typography>
@@ -338,7 +352,6 @@ export default function MotivationTab({
         </CardContent>
       </Card>
 
-      {/* 2. 欲しいものリスト機能 */}
       <Card sx={{ mb: 2 }}>
         <CardContent>
           <Box
@@ -393,38 +406,124 @@ export default function MotivationTab({
                       component="span"
                       sx={{ display: "flex", alignItems: "center" }}
                     >
-                      {isPremium && (
-                        <Chip
-                          label={`No.${item.priority}`}
-                          size="small"
-                          color={item.priority === 1 ? "secondary" : "default"}
-                          sx={{ mr: 1, height: 20, fontSize: "0.6rem" }}
-                        />
-                      )}
+                      {/* ★優先度選択プルダウンに変更 */}
+                      <Select
+                        value={item.priority}
+                        onChange={(e) =>
+                          handleChangeItemPriority(item, e.target.value)
+                        }
+                        variant="standard"
+                        disableUnderline
+                        size="small"
+                        sx={{
+                          mr: 1,
+                          height: 24,
+                          fontSize: "0.75rem",
+                          fontWeight: "bold",
+                          color:
+                            item.priority === 1
+                              ? "secondary.main"
+                              : "text.secondary",
+                          ".MuiSelect-select": {
+                            paddingRight: "16px !important",
+                          }, // 矢印と被らないように
+                        }}
+                      >
+                        <MenuItem value={1} sx={{ fontSize: "0.8rem" }}>
+                          1:高
+                        </MenuItem>
+                        <MenuItem value={2} sx={{ fontSize: "0.8rem" }}>
+                          2:中
+                        </MenuItem>
+                        <MenuItem value={3} sx={{ fontSize: "0.8rem" }}>
+                          3:低
+                        </MenuItem>
+                      </Select>
                       {item.name}
                     </Box>
                   }
                   secondary={`¥${item.price.toLocaleString()}`}
-                  // ★必要なら文字色も明示的に指定（通常はtheme依存でOKだが念のため）
                   secondaryTypographyProps={{ color: "text.secondary" }}
                 />
               </ListItem>
             ))}
-            {/* ... (リストが空の場合の表示) ... */}
+            {displayWishlist.length === 0 && (
+              <Typography
+                variant="caption"
+                align="center"
+                display="block"
+                sx={{ p: 2, color: "text.secondary" }}
+              >
+                登録なし
+              </Typography>
+            )}
           </List>
 
-          {/* ... (追加フォーム) ... */}
+          {!isLimitReached ? (
+            <Grid container spacing={1} alignItems="center">
+              {/* ★レイアウト変更: 名前・金額・優先度・ボタン */}
+              <Grid item xs={4}>
+                <TextField
+                  label="品名"
+                  size="small"
+                  fullWidth
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                />
+              </Grid>
+              <Grid item xs={3}>
+                <TextField
+                  label="金額"
+                  type="number"
+                  size="small"
+                  fullWidth
+                  value={newItemPrice}
+                  onChange={(e) => setNewItemPrice(e.target.value)}
+                />
+              </Grid>
+              {/* ★優先度選択を追加 */}
+              <Grid item xs={3}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>優先度</InputLabel>
+                  <Select
+                    value={newItemPriority}
+                    label="優先度"
+                    onChange={(e) => setNewItemPriority(e.target.value)}
+                  >
+                    <MenuItem value={1}>1:高</MenuItem>
+                    <MenuItem value={2}>2:中</MenuItem>
+                    <MenuItem value={3}>3:低</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={2}>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  onClick={handleAddItem}
+                  disabled={!newItemName || !newItemPrice}
+                  sx={{ minWidth: 0, px: 0 }}
+                >
+                  <Add />
+                </Button>
+              </Grid>
+            </Grid>
+          ) : (
+            <Alert severity="info" sx={{ py: 0 }}>
+              {isPremium
+                ? "登録上限(3つ)です"
+                : "無料版は1つまで。有料版で解放！"}
+            </Alert>
+          )}
         </CardContent>
       </Card>
 
-      {/* 3. AIコーチ (Gemini) - 有料会員のみ表示するよう変更 */}
-      {/* ★修正: isPremium が true の場合のみレンダリングする */}
       {isPremium && (
         <Card
           sx={{
             border: "2px solid",
-            borderColor: aiCardBorderColor, // ★修正
-            bgcolor: aiCardBgColor, // ★修正
+            borderColor: aiCardBorderColor,
+            bgcolor: aiCardBgColor,
           }}
         >
           <CardContent>
@@ -435,13 +534,12 @@ export default function MotivationTab({
               </Typography>
             </Box>
 
-            {/* isPremium判定は親で行っているので、ここは中身だけでOK */}
             <>
               {dailyMessage ? (
                 <Box
                   sx={{
                     p: 2,
-                    bgcolor: messageBoxBgColor, // ★修正
+                    bgcolor: messageBoxBgColor,
                     borderRadius: 2,
                     border: isDark
                       ? "1px dashed rgba(255,255,255,0.3)"
@@ -456,7 +554,7 @@ export default function MotivationTab({
                       fontWeight: "bold",
                       fontSize: "1.05rem",
                       mb: 1,
-                      color: messageTextColor, // ★修正
+                      color: messageTextColor,
                     }}
                   >
                     "{dailyMessage}"

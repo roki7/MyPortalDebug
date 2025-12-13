@@ -22,6 +22,7 @@ import {
   Switch,
   FormControlLabel,
   InputAdornment,
+  useTheme, // 追加
 } from "@mui/material";
 import {
   Edit,
@@ -49,9 +50,10 @@ export default function SettingsTab({
   onAddJobRequest,
   sharedDocs,
 }) {
-  // ★修正: createGroup を取得
   const { userProfile, kickMember, canShareGroup, isOwner, createGroup } =
     useAuth();
+  const theme = useTheme(); // テーマ取得
+  const isDark = theme.palette.mode === "dark";
 
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
@@ -121,7 +123,6 @@ export default function SettingsTab({
     alert("招待リンクをコピーしました");
   };
 
-  // ★追加: グループ作成ハンドラ
   const handleCreateGroup = async () => {
     if (window.confirm("新しい共有グループを作成しますか？")) {
       await createGroup();
@@ -138,6 +139,11 @@ export default function SettingsTab({
   const maxMembers =
     userProfile?.plan === "family" ? 4 : userProfile?.plan === "couple" ? 2 : 1;
   const currentMemberCount = (sharedDocs?.length || 0) + 1;
+
+  // 共有管理カードの背景色をテーマに応じて変更
+  const sharedCardBg = isDark
+    ? "rgba(255, 255, 255, 0.05)" // ダークモード時
+    : "#f0f4ff"; // ライトモード時
 
   return (
     <Box sx={{ pb: 4 }}>
@@ -484,7 +490,8 @@ export default function SettingsTab({
           <Typography variant="h6" gutterBottom>
             🔗 共有管理 ({planName})
           </Typography>
-          <Card sx={{ mb: 4, bgcolor: "#f0f4ff" }}>
+          {/* 背景色を変数(sharedCardBg)に変更 */}
+          <Card sx={{ mb: 4, bgcolor: sharedCardBg }}>
             <CardContent>
               {/* 人数表示 */}
               <Box
@@ -510,7 +517,6 @@ export default function SettingsTab({
                 />
               </Box>
 
-              {/* ★修正: 招待リンク または グループ作成ボタン */}
               {userProfile?.groupId ? (
                 <Box sx={{ mb: 3 }}>
                   <Typography variant="caption" color="textSecondary">
