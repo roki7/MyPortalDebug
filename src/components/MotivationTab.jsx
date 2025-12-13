@@ -160,12 +160,9 @@ export default function MotivationTab({
           : "現在登録なし";
 
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel(
-        {
-          model: "gemini-1.5-flash",
-        },
-        { apiVersion: "v1beta" }
-      );
+      const model = genAI.getGenerativeModel({
+        model: "gemini-1.5-flash",
+      });
       const prompt = `
         あなたはユーザー専属の情熱的で親しみやすいライフコーチです。
         以下の詳細な収支状況をもとに、今日一日を頑張るための励ましメッセージを生成してください。
@@ -240,7 +237,7 @@ export default function MotivationTab({
               justifyContent: "center",
             }}
           >
-            今月の余裕資金{" "}
+            今月のゆとり資金{" "}
             <Chip
               label="Real"
               size="small"
@@ -291,7 +288,7 @@ export default function MotivationTab({
           <Divider sx={{ my: 1 }} />
 
           <Typography variant="caption" color="text.secondary">
-            本当に自由に使えるお金
+            自由に使えるお金
           </Typography>
           <Typography
             variant="h3"
