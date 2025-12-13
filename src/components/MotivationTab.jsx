@@ -142,6 +142,7 @@ export default function MotivationTab({
     setError(null);
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
       if (!apiKey) throw new Error("APIキーが設定されていません");
 
       // 前回のメッセージを取得（重複回避用）
@@ -161,7 +162,7 @@ export default function MotivationTab({
 
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
+        model: "gemini-2.5-flash-lite",
       });
       const prompt = `
         あなたはユーザー専属の情熱的で親しみやすいライフコーチです。
