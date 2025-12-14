@@ -47,6 +47,8 @@ import {
   Groups,
   Person,
   CardGiftcard,
+  ExpandMore,
+  ExpandLess,
 } from "@mui/icons-material";
 import { format, addMonths, subMonths } from "date-fns";
 import ShiftEditModal from "./components/ShiftEditModal";
@@ -92,6 +94,8 @@ import ReloadPrompt from "./components/ReloadPrompt";
 import MyLinksTab from "./components/MyLinksTab";
 import PointTab from "./components/PointTab";
 
+import AnalogClock from "./components/AnalogClock";
+
 export default function MainApp() {
   const {
     currentUser,
@@ -111,6 +115,8 @@ export default function MainApp() {
 
   const [jobDialogOpen, setJobDialogOpen] = useState(false);
   const [editingJob, setEditingJob] = useState(null);
+
+  const [expandedHeader, setExpandedHeader] = useState(true);
 
   const [settings, setSettings] = useState(INITIAL_SETTINGS);
   const [members, setMembers] = useState(INITIAL_MEMBERS);
@@ -157,7 +163,7 @@ export default function MainApp() {
   const currentTheme = themeMap[currentThemeMode];
   const isNeon = currentThemeMode === "neon";
 
-  // ★修正: データ読み込み時にローカルデータとマージするロジックを追加
+  // データ読み込みとマージのロジック
   useEffect(() => {
     const init = async () => {
       try {
@@ -201,13 +207,17 @@ export default function MainApp() {
         setShopping(d.shopping || localData.shopping || INITIAL_SHOPPING);
 
         // 配列データはマージする（これでログアウト中の追加分が復活します）
-        setMyLinks(mergeArrays(d.myLinks, localData.myLinks));
-        setWishlist(mergeArrays(d.wishlist, localData.wishlist));
+        const mergedMyLinks = mergeArrays(d.myLinks, localData.myLinks);
+        // マージ結果が空の場合はINITIAL_MY_LINKSを使用
+        setMyLinks(mergedMyLinks.length > 0 ? mergedMyLinks : INITIAL_MY_LINKS);
+
+        const mergedWishlist = mergeArrays(d.wishlist, localData.wishlist);
+        setWishlist(mergedWishlist);
 
         // カテゴリは設定系なのでクラウド優先
-        if (d.linkCategories) setLinkCategories(d.linkCategories);
-        else if (localData.linkCategories)
-          setLinkCategories(localData.linkCategories);
+        setLinkCategories(
+          d.linkCategories || localData.linkCategories || LINK_CATEGORIES
+        );
 
         // ポイントは大きい方を採用、またはクラウドが未定義ならローカル
         const cloudPoints = d.points;
@@ -394,6 +404,9 @@ export default function MainApp() {
 
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
+
+  // ヘッダー展開トグル関数
+  const handleToggleHeader = () => setExpandedHeader((prev) => !prev);
 
   const handleOpenJobAdd = () => {
     setEditingJob(null);
@@ -710,18 +723,59 @@ export default function MainApp() {
           <Box
             sx={{
               display: "flex",
-              justifyContent: "space-between",
+              // ★修正: justify-content: "space-between" を削除し、flexGrowで中央寄せを担保
               alignItems: "center",
               mb: 1,
             }}
           >
-            <IconButton onClick={handlePrevMonth} size="small">
-              <ArrowBack sx={{ color: "text.primary" }} />
-            </IconButton>
-            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-              {format(currentDate, "yyyy年 M月")}
-            </Typography>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            {/* 1. Prev Button - 左端に配置し、flexGrow: 1 で残りのスペースを確保 (中央寄せの基準となる) */}
+            <Box
+              sx={{
+                flexGrow: 1,
+                display: "flex",
+                justifyContent: "flex-start",
+                minWidth: "auto",
+              }}
+            >
+              <IconButton onClick={handlePrevMonth} size="small">
+                <ArrowBack sx={{ color: "text.primary" }} />
+              </IconButton>
+            </Box>
+
+            {/* 2. 年月表示 - 中央に配置 (flexGrowなし) */}
+            <Box
+              sx={{
+                flexShrink: 0, // 縮まない
+                cursor: "pointer",
+                display: "flex",
+                justifyContent: "center", // コンテンツ自体を中央に寄せる
+                alignItems: "center",
+              }}
+              onClick={handleToggleHeader} // クリックで展開をトグル
+            >
+              <Typography
+                variant="h6"
+                sx={{ fontWeight: "bold", whiteSpace: "nowrap" }}
+              >
+                {format(currentDate, "yyyy年 M月")}
+              </Typography>
+              <IconButton size="small" sx={{ color: "text.primary", ml: 0.5 }}>
+                {expandedHeader ? <ExpandLess /> : <ExpandMore />}{" "}
+                {/* アイコン切り替え */}
+              </IconButton>
+            </Box>
+
+            {/* 3. Right Icons - 右端に配置し、flexGrow: 1 で残りのスペースを確保 (中央寄せの基準となる) */}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                flexGrow: 1,
+                justifyContent: "flex-end",
+                minWidth: "auto",
+              }}
+            >
               <Chip
                 icon={
                   canSaveCloud ? (
@@ -749,86 +803,129 @@ export default function MainApp() {
             </Box>
           </Box>
 
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              mb: 0,
-            }}
-          >
-            <Box sx={{ display: "flex", flexDirection: "column" }}>
-              <Typography variant="caption">
-                📅 出勤: {earnings.workDays}日
-              </Typography>
-              <Typography variant="caption">
-                💰 {isHousehold ? "世帯" : "個人"}年収: ¥
-                {currentAnnualIncome.toLocaleString()}
-              </Typography>
-            </Box>
-
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={isHousehold}
-                  onChange={(e) => setIsHousehold(e.target.checked)}
-                  size="small"
-                  color="warning"
-                />
-              }
-              label={
-                <Typography variant="caption" sx={{ color: "text.primary" }}>
-                  世帯合算
-                </Typography>
-              }
-              sx={{ mr: 0 }}
-            />
-          </Box>
-
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-end",
-              mt: 1,
-            }}
-          >
+          {/* expandedHeaderがtrueの場合にのみ表示するアコーディオンエリア */}
+          {expandedHeader && (
             <Box>
-              <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                {realtimeLabel}
-              </Typography>
-              <Typography variant="h4" fontWeight="bold">
-                ¥{currentRealtimeEarnings.toLocaleString()}
-              </Typography>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start", // 上端揃えに戻す
+                  mt: 1, // スペース調整
+                }}
+              >
+                {/* 左側: 日数・年収 （レイアウト調整なし）*/}
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    minWidth: "30%",
+                    mr: 1,
+                  }}
+                >
+                  <Typography variant="caption">
+                    📅 出勤: {earnings.workDays}日
+                  </Typography>
+                  <Typography variant="caption">
+                    💰 {isHousehold ? "世帯" : "個人"}年収: ¥
+                    {currentAnnualIncome.toLocaleString()}
+                  </Typography>
+                </Box>
+
+                {/* 中央は空にして、下の行に時計と収支を配置するためレイアウトをシンプルに保つ */}
+
+                {/* 右側: 世帯合算スイッチ（レイアウト調整なし） */}
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={isHousehold}
+                      onChange={(e) => setIsHousehold(e.target.checked)}
+                      size="small"
+                      color="warning"
+                    />
+                  }
+                  label={
+                    <Typography
+                      variant="caption"
+                      sx={{ color: "text.primary" }}
+                    >
+                      世帯合算
+                    </Typography>
+                  }
+                  sx={{
+                    mr: 0,
+                    minWidth: "30%",
+                    justifyContent: "flex-end",
+                    ml: 1,
+                  }} // 右寄せに調整
+                />
+              </Box>
+
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center", // 中央寄せ
+                  mt: 1,
+                }}
+              >
+                <Box>
+                  <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                    {realtimeLabel}
+                  </Typography>
+                  <Typography variant="h4" fontWeight="bold">
+                    ¥{currentRealtimeEarnings.toLocaleString()}
+                  </Typography>
+                </Box>
+
+                {/* ★修正: アナログ時計をリアルタイム収支と着地見込みの間に配置 */}
+                <Box
+                  sx={{
+                    flexShrink: 0,
+                    width: 100,
+                    height: 100,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: "50%",
+                  }}
+                >
+                  <AnalogClock currentTheme={currentTheme} isNeon={isNeon} />{" "}
+                  {/* propsを渡す */}
+                </Box>
+                {/* ★修正ここまで */}
+
+                <Box sx={{ textAlign: "right" }}>
+                  <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                    着地見込み
+                  </Typography>
+                  <Typography variant="h6">
+                    ¥{currentProjected?.toLocaleString() || 0}
+                  </Typography>
+                </Box>
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={
+                  currentProjected > 0
+                    ? (currentRealtimeEarnings / currentProjected) * 100
+                    : 0
+                }
+                sx={{
+                  mt: 1,
+                  height: 6,
+                  borderRadius: 3,
+                  bgcolor: "rgba(128,128,128,0.2)",
+                  "& .MuiLinearProgress-bar": {
+                    background: isNeon
+                      ? "linear-gradient(90deg, #00F5FF, #6A00FF)"
+                      : "#00e676",
+                  },
+                }}
+              />
             </Box>
-            <Box sx={{ textAlign: "right" }}>
-              <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                着地見込み
-              </Typography>
-              <Typography variant="h6">
-                ¥{currentProjected?.toLocaleString() || 0}
-              </Typography>
-            </Box>
-          </Box>
-          <LinearProgress
-            variant="determinate"
-            value={
-              currentProjected > 0
-                ? (currentRealtimeEarnings / currentProjected) * 100
-                : 0
-            }
-            sx={{
-              mt: 1,
-              height: 6,
-              borderRadius: 3,
-              bgcolor: "rgba(128,128,128,0.2)",
-              "& .MuiLinearProgress-bar": {
-                background: isNeon
-                  ? "linear-gradient(90deg, #00F5FF, #6A00FF)"
-                  : "#00e676",
-              },
-            }}
-          />
+          )}
+          {/* アコーディオンエリア終了 */}
         </Paper>
 
         <Box sx={{ p: 2 }}>

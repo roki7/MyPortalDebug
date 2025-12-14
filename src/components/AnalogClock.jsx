@@ -1,9 +1,13 @@
+// src/components/AnalogClock.jsx
 import React, { useState, useEffect } from "react";
+// MUIのテーマカラーを取得するためにBoxコンポーネントは不要だが、デザイン調整のためにMUIのuseThemeを使用するのが一般的だが、ここではpropsで受け取る
 
-const AnalogClock = ({ className = "" }) => {
+const AnalogClock = ({ currentTheme, isNeon }) => {
+  // propsを追加
   const [date, setDate] = useState(new Date());
 
   useEffect(() => {
+    // 1秒ごとに更新
     const timerId = setInterval(() => setDate(new Date()), 1000);
     return () => clearInterval(timerId);
   }, []);
@@ -19,18 +23,44 @@ const AnalogClock = ({ className = "" }) => {
 
   // 日付の取得
   const day = date.getDate();
-  const dayOfWeek = ["日", "月", "火", "水", "木", "金", "土"][date.getDay()];
+
+  // ★テーマ連動色の定義
+  const clockBgColor = isNeon
+    ? currentTheme.palette.background.default
+    : currentTheme.palette.background.paper;
+  const clockBorderColor = isNeon ? "#00F5FF" : "#e5e7eb";
+  const minuteHandColor = isNeon
+    ? "#00F5FF"
+    : currentTheme.palette.text.primary;
+  const hourHandColor = isNeon ? "#6A00FF" : currentTheme.palette.text.primary;
+  const secondHandColor = "#ef4444"; // 秒針は赤で固定
 
   return (
-    <div className={`relative flex items-center justify-center ${className}`}>
-      <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-md">
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <svg
+        viewBox="0 0 100 100"
+        style={{
+          width: "100%",
+          height: "100%",
+          filter: "drop-shadow(0 2px 2px rgba(0, 0, 0, 0.2))",
+        }}
+      >
         {/* 時計の文字盤背景 */}
         <circle
           cx="50"
           cy="50"
           r="48"
-          fill="white"
-          stroke="#e5e7eb"
+          fill={clockBgColor} // ★テーマ連動
+          stroke={clockBorderColor} // ★テーマ連動
           strokeWidth="2"
         />
 
@@ -41,14 +71,14 @@ const AnalogClock = ({ className = "" }) => {
             x1="50"
             y1="6"
             x2="50"
-            y2={i % 3 === 0 ? "12" : "8"} // 3, 6, 9, 12時は少し長く
-            stroke="#9ca3af"
+            y2={i % 3 === 0 ? "12" : "8"}
+            stroke={currentTheme.palette.text.secondary} // 目盛りはテキストセカンダリに連動
             strokeWidth={i % 3 === 0 ? "2" : "1"}
             transform={`rotate(${i * 30} 50 50)`}
           />
         ))}
 
-        {/* 日付表示 (時計の右側または下部に配置) */}
+        {/* 日付表示 */}
         <rect x="60" y="44" width="18" height="12" fill="#f3f4f6" rx="2" />
         <text
           x="69"
@@ -68,7 +98,7 @@ const AnalogClock = ({ className = "" }) => {
           y1="50"
           x2="50"
           y2="25"
-          stroke="#1f2937"
+          stroke={hourHandColor} // ★テーマ連動
           strokeWidth="3"
           strokeLinecap="round"
           transform={`rotate(${hourAngle} 50 50)`}
@@ -80,7 +110,7 @@ const AnalogClock = ({ className = "" }) => {
           y1="50"
           x2="50"
           y2="15"
-          stroke="#4b5563"
+          stroke={minuteHandColor} // ★テーマ連動
           strokeWidth="2"
           strokeLinecap="round"
           transform={`rotate(${minuteAngle} 50 50)`}
@@ -92,14 +122,14 @@ const AnalogClock = ({ className = "" }) => {
           y1="50"
           x2="50"
           y2="10"
-          stroke="#ef4444"
+          stroke={secondHandColor}
           strokeWidth="1"
           strokeLinecap="round"
           transform={`rotate(${secondAngle} 50 50)`}
         />
 
         {/* 中心点 */}
-        <circle cx="50" cy="50" r="2" fill="#ef4444" />
+        <circle cx="50" cy="50" r="2" fill={secondHandColor} />
       </svg>
     </div>
   );
