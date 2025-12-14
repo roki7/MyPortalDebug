@@ -320,6 +320,22 @@ export default function CalendarTab({
           );
         })}
       </Grid>
+      <Box sx={{ p: 1, textAlign: "right", bgcolor: headerBg }}>
+        <Typography
+          variant="caption"
+          sx={{ fontSize: "0.6rem", color: "text.secondary" }}
+        >
+          Weather data by{" "}
+          <a
+            href="https://open-meteo.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "inherit", textDecoration: "underline" }}
+          >
+            Open-Meteo.com
+          </a>
+        </Typography>
+      </Box>
     </Box>
   );
 }

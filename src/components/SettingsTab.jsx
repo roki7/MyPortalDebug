@@ -22,7 +22,11 @@ import {
   Switch,
   FormControlLabel,
   InputAdornment,
-  useTheme, // 追加
+  useTheme,
+  RadioGroup,
+  Radio,
+  CircularProgress,
+  Alert,
 } from "@mui/material";
 import {
   Edit,
@@ -32,8 +36,11 @@ import {
   PersonRemove,
   Group,
   PersonAdd,
+  MyLocation,
+  Map,
 } from "@mui/icons-material";
 import { useAuth } from "../AuthContext";
+import { PREFECTURES } from "../data";
 
 export default function SettingsTab({
   jobs,
@@ -50,15 +57,26 @@ export default function SettingsTab({
   onAddJobRequest,
   sharedDocs,
 }) {
-  const { userProfile, kickMember, canShareGroup, isOwner, createGroup } =
-    useAuth();
-  const theme = useTheme(); // テーマ取得
+  // isPremium を忘れずに取得
+  const {
+    userProfile,
+    kickMember,
+    canShareGroup,
+    isOwner,
+    createGroup,
+    isPremium,
+  } = useAuth();
+
+  const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
 
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
   const [selectedRangeJob, setSelectedRangeJob] = useState("");
   const [newMemberName, setNewMemberName] = useState("");
+
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState(null);
 
   const handleRangeSubmit = () => {
     if (!rangeStart || !rangeEnd || !selectedRangeJob) {
@@ -130,6 +148,54 @@ export default function SettingsTab({
     }
   };
 
+  const handleWeatherModeChange = (e) => {
+    const mode = e.target.value;
+    if (mode === "gps" && !isPremium) {
+      alert("GPS機能はプレミアム会員限定です");
+      return;
+    }
+    onUpdateSettings({ ...settings, weatherMode: mode });
+  };
+
+  const handlePrefectureChange = (e) => {
+    const prefName = e.target.value;
+    const pref = PREFECTURES.find((p) => p.name === prefName);
+    if (pref) {
+      onUpdateSettings({
+        ...settings,
+        weatherMode: "manual",
+        location: { name: pref.name, lat: pref.lat, lon: pref.lon },
+      });
+    }
+  };
+
+  const handleGetGps = () => {
+    if (!navigator.geolocation) {
+      setGpsError("この端末ではGPSが使えません");
+      return;
+    }
+    setGpsLoading(true);
+    setGpsError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        onUpdateSettings({
+          ...settings,
+          weatherMode: "gps",
+          location: { name: "現在地周辺", lat: latitude, lon: longitude },
+        });
+        setGpsLoading(false);
+      },
+      (err) => {
+        console.error(err);
+        setGpsError("位置情報の取得に失敗しました");
+        setGpsLoading(false);
+      },
+      { timeout: 10000 }
+    );
+  };
+
   const planName =
     userProfile?.plan === "family"
       ? "ファミリー"
@@ -140,14 +206,14 @@ export default function SettingsTab({
     userProfile?.plan === "family" ? 4 : userProfile?.plan === "couple" ? 2 : 1;
   const currentMemberCount = (sharedDocs?.length || 0) + 1;
 
-  // 共有管理カードの背景色をテーマに応じて変更
-  const sharedCardBg = isDark
-    ? "rgba(255, 255, 255, 0.05)" // ダークモード時
-    : "#f0f4ff"; // ライトモード時
+  const sharedCardBg = isDark ? "rgba(255, 255, 255, 0.05)" : "#f0f4ff";
+
+  const currentMode = settings.weatherMode || "manual";
+  const currentLocationName = settings.location?.name || "未設定";
 
   return (
     <Box sx={{ pb: 4 }}>
-      {/* 1. 一括登録 */}
+      {/* 1. 一括登録 (頻度: 高) */}
       <Typography variant="h6" gutterBottom>
         📅 シフト一括登録/削除
       </Typography>
@@ -211,7 +277,7 @@ export default function SettingsTab({
         </CardContent>
       </Card>
 
-      {/* 2. 仕事の設定 */}
+      {/* 2. 仕事の設定 (頻度: 中) */}
       <Typography variant="h6" gutterBottom>
         ⚙️ 仕事の設定
       </Typography>
@@ -399,7 +465,108 @@ export default function SettingsTab({
         </CardContent>
       </Card>
 
-      {/* 5.テーマ設定 */}
+      {/* ★ここに移動: 天気予報の地域 */}
+      <Typography variant="h6" gutterBottom>
+        🌤️ 天気予報の地域
+      </Typography>
+      <Card sx={{ mb: 4 }}>
+        <CardContent>
+          <FormControl component="fieldset">
+            <RadioGroup
+              row
+              value={currentMode}
+              onChange={handleWeatherModeChange}
+            >
+              <FormControlLabel
+                value="manual"
+                control={<Radio />}
+                label="都道府県を選択"
+              />
+              <FormControlLabel
+                value="gps"
+                disabled={!isPremium}
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: "flex", alignItems: "center" }}>
+                    GPS (現在地)
+                    {!isPremium && (
+                      <Chip
+                        label="Premium"
+                        size="small"
+                        color="warning"
+                        sx={{ ml: 1, height: 16, fontSize: "0.6rem" }}
+                      />
+                    )}
+                  </Box>
+                }
+              />
+            </RadioGroup>
+          </FormControl>
+
+          <Divider sx={{ my: 2 }} />
+
+          {currentMode === "manual" ? (
+            <FormControl fullWidth>
+              <InputLabel>都道府県</InputLabel>
+              <Select
+                value={
+                  PREFECTURES.some((p) => p.name === currentLocationName)
+                    ? currentLocationName
+                    : ""
+                }
+                label="都道府県"
+                onChange={handlePrefectureChange}
+                startAdornment={
+                  <InputAdornment position="start">
+                    <Map color="action" />
+                  </InputAdornment>
+                }
+              >
+                {PREFECTURES.map((pref) => (
+                  <MenuItem key={pref.name} value={pref.name}>
+                    {pref.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          ) : (
+            <Box>
+              <Typography variant="body2" gutterBottom>
+                現在の設定: <b>{currentLocationName}</b>
+              </Typography>
+              <Button
+                variant="contained"
+                fullWidth
+                startIcon={
+                  gpsLoading ? (
+                    <CircularProgress size={20} color="inherit" />
+                  ) : (
+                    <MyLocation />
+                  )
+                }
+                onClick={handleGetGps}
+                disabled={gpsLoading}
+              >
+                現在地を取得して更新
+              </Button>
+              {gpsError && (
+                <Alert severity="error" sx={{ mt: 1 }}>
+                  {gpsError}
+                </Alert>
+              )}
+              <Typography
+                variant="caption"
+                color="textSecondary"
+                sx={{ mt: 1, display: "block" }}
+              >
+                ※半径約10km圏内の天気予報エリアに自動設定されます。
+              </Typography>
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 6. テーマ設定 */}
       <Typography variant="h6" gutterBottom>
         🎨 デザインテーマ
       </Typography>
@@ -432,7 +599,8 @@ export default function SettingsTab({
           )}
         </CardContent>
       </Card>
-      {/* 6. 計算・表示設定（復元） */}
+
+      {/* 7. 計算・表示設定 */}
       <Typography variant="h6" gutterBottom>
         🧮 計算・表示設定
       </Typography>
@@ -484,13 +652,12 @@ export default function SettingsTab({
         </CardContent>
       </Card>
 
-      {/* 7. 共有管理 (対象者のみ表示) */}
+      {/* 8. 共有管理 */}
       {canShareGroup && (
         <>
           <Typography variant="h6" gutterBottom>
             🔗 共有管理 ({planName})
           </Typography>
-          {/* 背景色を変数(sharedCardBg)に変更 */}
           <Card sx={{ mb: 4, bgcolor: sharedCardBg }}>
             <CardContent>
               {/* 人数表示 */}
@@ -592,7 +759,7 @@ export default function SettingsTab({
                 ※全員OFFにすることが推奨されます（初期設定）。
               </Typography>
 
-              {/* メンバーリスト (グループがある場合のみ) */}
+              {/* メンバーリスト */}
               {userProfile?.groupId && (
                 <>
                   <Divider sx={{ my: 2 }} />

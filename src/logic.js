@@ -112,6 +112,76 @@ const calculateDailyRate = (targetDateStr, job, allShifts) => {
   return Math.floor(salary / count);
 };
 
+// 2点間の距離(km)を測る関数
+const getDistanceKm = (lat1, lon1, lat2, lon2) => {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+export const getWeatherDataSmart = async (
+  userLat,
+  userLon,
+  fetchFromFirebaseFunc
+) => {
+  const CACHE_KEY = "smart_weather_cache";
+  const EXPIRE_MINUTES = 60; // 1時間（天気予報の更新頻度に合わせる）
+  const MOVE_THRESHOLD_KM = 10; // 10km以上移動したら再取得
+
+  // 1. ローカル保存データをロード
+  const savedRaw = localStorage.getItem(CACHE_KEY);
+  if (savedRaw) {
+    const saved = JSON.parse(savedRaw);
+    const now = Date.now();
+    const diffMinutes = (now - saved.timestamp) / (1000 * 60);
+
+    // 2. 時間チェック
+    if (diffMinutes < EXPIRE_MINUTES) {
+      // 3. 距離チェック (GPSモードの場合のみ)
+      if (userLat && userLon) {
+        const dist = getDistanceKm(userLat, userLon, saved.lat, saved.lon);
+        if (dist < MOVE_THRESHOLD_KM) {
+          console.log("♻️ キャッシュ有効: API節約中");
+          return saved.data; // ★Firebaseに繋がず、保存データを返す
+        }
+      } else {
+        // 都道府県モードなら場所移動はないので、時間内なら即キャッシュ使用
+        console.log("♻️ キャッシュ有効(エリア固定): API節約中");
+        return saved.data;
+      }
+    }
+  }
+
+  // --- ここから下は「データが古い」か「移動した」場合のみ実行 ---
+
+  console.log("🌍 新しい天気を取得します...");
+
+  // Firebaseから取得する関数を実行
+  // (引数で渡された、実際にFirestoreを叩く関数)
+  const freshData = await fetchFromFirebaseFunc(userLat, userLon);
+
+  if (freshData) {
+    // 新しいデータをスマホに保存（次回の節約のため）
+    const cachePayload = {
+      timestamp: Date.now(),
+      lat: userLat,
+      lon: userLon,
+      data: freshData,
+    };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cachePayload));
+  }
+
+  return freshData;
+};
+
 const calculateShiftAmount = (shift, job, allShifts, dateStr) => {
   // 1. 手動修正モード (Manual Override)
   if (shift.isManualOverride) {
