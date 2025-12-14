@@ -46,6 +46,7 @@ import {
   AccountBalanceWallet,
 } from "@mui/icons-material";
 import { format, subDays, setDate, parseISO } from "date-fns";
+import AdSenseBanner from "./AdSenseBanner";
 
 export default function FinanceTab({
   accounts,
@@ -284,6 +285,7 @@ export default function FinanceTab({
 
   return (
     <Box
+      sx={{ pb: 15 }}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
@@ -1146,6 +1148,10 @@ export default function FinanceTab({
           </Button>
         </DialogActions>
       </Dialog>
+      <AdSenseBanner
+        clientId="ca-pub-2913122779764758" // ★あなたのパブリッシャーIDを入れてください
+        slotId="5440394824" // ★広告ユニットIDを入れてください
+      />
     </Box>
   );
 }

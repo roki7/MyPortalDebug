@@ -39,6 +39,7 @@ import {
   RadioButtonUnchecked,
   Close,
 } from "@mui/icons-material";
+import AdSenseBanner from "./AdSenseBanner";
 import { format, formatDistanceToNow, parseISO } from "date-fns";
 import { ja } from "date-fns/locale";
 
@@ -276,7 +277,7 @@ export default function ShoppingTab({
   });
 
   return (
-    <Box sx={{ pb: 10 }}>
+    <Box sx={{ pb: 15 }}>
       {/* タブ切り替え */}
       <Tabs
         value={tab}
@@ -672,6 +673,11 @@ export default function ShoppingTab({
           </Button>
         </DialogActions>
       </Dialog>
+      {/* ★追加: AdSense広告 (リストの下に配置) */}
+      <AdSenseBanner
+        clientId="ca-pub-2913122779764758" // ★あなたのパブリッシャーIDを入れてください
+        slotId="7886417154" // ★広告ユニットIDを入れてください
+      />
     </Box>
   );
 }

@@ -1,6 +1,6 @@
 // src/components/CalendarTab.jsx
 import React from "react";
-import { Box, Paper, Typography, Grid, useTheme } from "@mui/material"; // useTheme追加
+import { Box, Paper, Typography, Grid, useTheme } from "@mui/material";
 import {
   format,
   startOfMonth,
@@ -22,10 +22,14 @@ import {
 } from "@mui/icons-material";
 import { isHoliday } from "holiday-jp";
 
+// ★追加: プレミアム判定のために読み込み
+import { useAuth } from "../AuthContext";
+import AdSenseBanner from "./AdSenseBanner";
+
 const getWeatherIcon = (code) => {
   if (code === undefined) return null;
   if (code <= 1) return <WbSunny sx={{ fontSize: 16, color: "orange" }} />;
-  if (code <= 3) return <Cloud sx={{ fontSize: 16, color: "gray" }} />; // 修正後もグレーだが背景があれば見える
+  if (code <= 3) return <Cloud sx={{ fontSize: 16, color: "gray" }} />;
   if (code <= 67) return <Umbrella sx={{ fontSize: 16, color: "#4fc3f7" }} />;
   if (code <= 77) return <AcUnit sx={{ fontSize: 16, color: "cyan" }} />;
   return <Thunderstorm sx={{ fontSize: 16, color: "purple" }} />;
@@ -47,11 +51,12 @@ export default function CalendarTab({
   weatherData,
   onDateClick,
   onShiftClick,
-  onPrevMonth, // 追加
-  onNextMonth, // 追加
 }) {
-  const theme = useTheme(); // テーマ取得
+  const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
+
+  // ★追加: プレミアム会員かどうかチェック
+  const { isPremium } = useAuth();
 
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(monthStart);
@@ -63,13 +68,30 @@ export default function CalendarTab({
 
   // 背景色の定義
   const headerBg = isDark ? "#1c1f2e" : "#fafafa";
-  const cellBgCurrent = isDark ? "#171a23" : "white"; // 今月: 少し明るいグレー vs 白
-  const cellBgOther = isDark ? "#0f1118" : "#f9f9f9"; // 月外: 暗いグレー vs 薄グレー
-  const cellBgToday = isDark ? "rgba(0, 229, 255, 0.15)" : "#e3f2fd"; // 今日: Cyan系 vs 青系
+  const cellBgCurrent = isDark ? "#171a23" : "white";
+  const cellBgOther = isDark ? "#0f1118" : "#f9f9f9";
+  const cellBgToday = isDark ? "rgba(0, 229, 255, 0.15)" : "#e3f2fd";
   const borderColor = isDark ? "rgba(255,255,255,0.1)" : "#e0e0e0";
 
   return (
-    <Box sx={{ border: `1px solid ${borderColor}`, borderBottom: "none" }}>
+    <Box
+      sx={{
+        // ★修正: プレミアムなら高さを広く(120px引き)、無料なら広告分狭く(200px引き)
+        height: isPremium ? "calc(100dvh - 120px)" : "calc(100dvh - 200px)",
+
+        overflowY: "auto",
+
+        // ★修正: プレミアムなら余白小さめ(4)、無料なら広告分大きく(10)
+        pb: isPremium ? 4 : 10,
+
+        scrollbarWidth: "none",
+        msOverflowStyle: "none",
+        "&::-webkit-scrollbar": {
+          display: "none",
+        },
+        border: "none",
+      }}
+    >
       {/* 曜日ヘッダー */}
       <Grid container spacing={0}>
         {weekDays.map((day, index) => (
@@ -81,7 +103,7 @@ export default function CalendarTab({
               textAlign: "center",
               bgcolor: headerBg,
               borderBottom: `1px solid ${borderColor}`,
-              borderRight: index !== 6 ? `1px solid ${borderColor}` : "none",
+              borderLeft: index === 0 ? "none" : `1px solid ${borderColor}`,
               py: 0.5,
             }}
           >
@@ -93,7 +115,7 @@ export default function CalendarTab({
                     ? "red"
                     : index === 6
                     ? "#448aff"
-                    : "text.secondary", // 青を少し明るく
+                    : "text.secondary",
                 fontWeight: "bold",
               }}
             >
@@ -125,7 +147,8 @@ export default function CalendarTab({
             : isCurrentMonth
             ? cellBgCurrent
             : cellBgOther;
-          const isRightEdge = (index + 1) % 7 === 0;
+
+          const isLeftEdge = index % 7 === 0;
 
           return (
             <Grid
@@ -142,14 +165,12 @@ export default function CalendarTab({
                   p: 0.5,
                   bgcolor: bgColor,
                   borderBottom: `1px solid ${borderColor}`,
-                  borderRight: isRightEdge
-                    ? "none"
-                    : `1px solid ${borderColor}`,
+                  borderLeft: isLeftEdge ? "none" : `1px solid ${borderColor}`,
                   display: "flex",
                   flexDirection: "column",
                   cursor: "pointer",
                   position: "relative",
-                  "&:hover": { bgcolor: isDark ? "#2c3142" : "#f5f5f5" }, // ホバー色
+                  "&:hover": { bgcolor: isDark ? "#2c3142" : "#f5f5f5" },
                 }}
               >
                 {/* 日付・祝日・天気 */}
@@ -191,7 +212,7 @@ export default function CalendarTab({
                     )}
                   </Box>
 
-                  {/* 天気・気圧（背景座布団を追加して視認性アップ） */}
+                  {/* 天気・気圧 */}
                   <Box sx={{ display: "flex", gap: 0.5 }}>
                     {weather && (
                       <Box
@@ -214,7 +235,7 @@ export default function CalendarTab({
                   </Box>
                 </Box>
 
-                {/* シフト表示エリア (既存ロジック維持) */}
+                {/* シフト表示エリア */}
                 <Box
                   sx={{
                     flexGrow: 1,
@@ -286,7 +307,7 @@ export default function CalendarTab({
                     sx={{
                       fontSize: "0.6rem",
                       textAlign: "right",
-                      color: isDark ? "#69f0ae" : "#4caf50", // 暗背景なら明るい緑
+                      color: isDark ? "#69f0ae" : "#4caf50",
                       fontWeight: "bold",
                       mt: "auto",
                     }}
@@ -294,7 +315,6 @@ export default function CalendarTab({
                     ¥
                     {dayShifts
                       .reduce((acc, s) => {
-                        /* 金額計算ロジック維持 */
                         const j = jobs.find((x) => x.id === s.jobId);
                         if (!j && !s.amount) return acc;
                         if (s.amount) return acc + s.amount;
@@ -320,6 +340,8 @@ export default function CalendarTab({
           );
         })}
       </Grid>
+
+      {/* 天気データのクレジット */}
       <Box sx={{ p: 1, textAlign: "right", bgcolor: headerBg }}>
         <Typography
           variant="caption"
@@ -336,6 +358,11 @@ export default function CalendarTab({
           </a>
         </Typography>
       </Box>
+
+      <AdSenseBanner
+        clientId="ca-pub-2913122779764758" // ★あなたのパブリッシャーIDを入れてください
+        slotId="6796696768" // ★広告ユニットIDを入れてください
+      />
     </Box>
   );
 }

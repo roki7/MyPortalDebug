@@ -26,6 +26,7 @@ import {
   YAxis, // ★追加
   CartesianGrid, // ★追加
 } from "recharts";
+import AdSenseBanner from "./AdSenseBanner";
 
 const COLORS = [
   "#0088FE",
@@ -97,6 +98,7 @@ export default function ReportTab({
     <Box>
       <Card
         sx={{
+          pd: 15,
           mb: 2,
           bgcolor: isDark ? "rgba(255, 255, 255, 0.05)" : "#e3f2fd",
           border: isDark ? "1px solid rgba(255,255,255,0.1)" : "none",
@@ -282,6 +284,10 @@ export default function ReportTab({
           </div>
         </CardContent>
       </Card>
+      <AdSenseBanner
+        clientId="ca-pub-2913122779764758" // ★あなたのパブリッシャーIDを入れてください
+        slotId="9332179006" // ★広告ユニットIDを入れてください
+      />
     </Box>
   );
 }

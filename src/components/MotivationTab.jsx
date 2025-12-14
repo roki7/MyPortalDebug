@@ -34,6 +34,7 @@ import {
 } from "@mui/icons-material";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { format } from "date-fns";
+import AdSenseBanner from "./AdSenseBanner";
 
 export default function MotivationTab({
   currentEarnings,
@@ -241,7 +242,7 @@ export default function MotivationTab({
 
   return (
     <Box>
-      <Card sx={{ mb: 2, bgcolor: "background.paper" }}>
+      <Card sx={{ pd: 15, mb: 2, bgcolor: "background.paper" }}>
         <CardContent sx={{ textAlign: "center" }}>
           <Typography
             variant="h6"
@@ -606,6 +607,10 @@ export default function MotivationTab({
           </CardContent>
         </Card>
       )}
+      <AdSenseBanner
+        clientId="ca-pub-2913122779764758" // ★あなたのパブリッシャーIDを入れてください
+        slotId="1840701793" // ★広告ユニットIDを入れてください
+      />
     </Box>
   );
 }
