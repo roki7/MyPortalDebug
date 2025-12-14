@@ -1,6 +1,12 @@
 // src/AuthContext.jsx
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+// ★修正: signInWithPopupをsignInWithRedirectとgetRedirectResultに変更
+import {
+  onAuthStateChanged,
+  signInWithRedirect,
+  getRedirectResult,
+  signOut,
+} from "firebase/auth";
 import {
   doc,
   getDoc,
@@ -31,24 +37,10 @@ export const AuthProvider = ({ children }) => {
 
   const login = async () => {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const userRef = doc(db, "users", result.user.uid);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) {
-        await setDoc(userRef, {
-          uid: result.user.uid,
-          name: result.user.displayName,
-          email: result.user.email,
-          plan: "free",
-          groupId: null,
-          createdAt: new Date(),
-        });
-      }
-      if (inviteCode) {
-        await joinGroup(result.user.uid, inviteCode);
-        setInviteCode(null);
-        window.history.replaceState({}, document.title, "/app");
-      }
+      // ★修正: signInWithPopupからsignInWithRedirectに変更
+      await signInWithRedirect(auth, googleProvider);
+
+      // リダイレクト方式では、成功時にこの後の処理は実行されず、ページ遷移します
     } catch (error) {
       console.error("Login failed", error);
     }
@@ -128,21 +120,61 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-      if (user) {
-        const docRef = doc(db, "users", user.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) setUserProfile(docSnap.data());
-      } else {
-        setUserProfile(null);
-      }
-      setLoading(false);
-    });
-    return unsubscribe;
-  }, []);
+    setLoading(true);
 
-  // ★修正: 権限ロジック
+    // ★追加: リダイレクト結果の処理（ログイン後の処理をここに移動）
+    const handleRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          const user = result.user;
+          const userRef = doc(db, "users", user.uid);
+          const userSnap = await getDoc(userRef);
+
+          // ユーザーがDBに存在しない場合の作成
+          if (!userSnap.exists()) {
+            await setDoc(userRef, {
+              uid: user.uid,
+              name: user.displayName,
+              email: user.email,
+              plan: "free",
+              groupId: null,
+              createdAt: new Date(),
+            });
+          }
+
+          // 招待コードの処理
+          if (inviteCode) {
+            // joinGroup関数は最新のユーザーデータに依存するため、実行
+            await joinGroup(user.uid, inviteCode);
+            setInviteCode(null);
+            window.history.replaceState({}, document.title, "/app");
+          }
+        }
+      } catch (error) {
+        console.error("Redirect login failed", error);
+      }
+
+      // onAuthStateChangedのリスナーを設定
+      const unsubscribe = onAuthStateChanged(auth, async (user) => {
+        setCurrentUser(user);
+        if (user) {
+          const docRef = doc(db, "users", user.uid);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) setUserProfile(docSnap.data());
+        } else {
+          setUserProfile(null);
+        }
+        setLoading(false);
+      });
+      return unsubscribe;
+    };
+
+    // リダイレクト結果の処理を開始
+    handleRedirectResult();
+  }, [inviteCode]); // joinGroup関数はAuthContextで定義されているため、依存配列から除外できます
+
+  // 権限ロジック
   const plan = userProfile?.plan || "free";
   const isGroupMember = !!userProfile?.groupId; // グループに参加しているかどうか
 

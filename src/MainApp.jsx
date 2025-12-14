@@ -723,12 +723,11 @@ export default function MainApp() {
           <Box
             sx={{
               display: "flex",
-              // ★修正: justify-content: "space-between" を削除し、flexGrowで中央寄せを担保
               alignItems: "center",
               mb: 1,
             }}
           >
-            {/* 1. Prev Button - 左端に配置し、flexGrow: 1 で残りのスペースを確保 (中央寄せの基準となる) */}
+            {/* 1. Prev Button - 左端 */}
             <Box
               sx={{
                 flexGrow: 1,
@@ -742,13 +741,13 @@ export default function MainApp() {
               </IconButton>
             </Box>
 
-            {/* 2. 年月表示 - 中央に配置 (flexGrowなし) */}
+            {/* 2. 年月表示 - 中央に配置 */}
             <Box
               sx={{
                 flexShrink: 0, // 縮まない
                 cursor: "pointer",
                 display: "flex",
-                justifyContent: "center", // コンテンツ自体を中央に寄せる
+                justifyContent: "center",
                 alignItems: "center",
               }}
               onClick={handleToggleHeader} // クリックで展開をトグル
@@ -765,7 +764,7 @@ export default function MainApp() {
               </IconButton>
             </Box>
 
-            {/* 3. Right Icons - 右端に配置し、flexGrow: 1 で残りのスペースを確保 (中央寄せの基準となる) */}
+            {/* 3. Right Icons - 右端 */}
             <Box
               sx={{
                 display: "flex",
@@ -810,11 +809,11 @@ export default function MainApp() {
                 sx={{
                   display: "flex",
                   justifyContent: "space-between",
-                  alignItems: "flex-start", // 上端揃えに戻す
-                  mt: 1, // スペース調整
+                  alignItems: "flex-start",
+                  mt: 1,
                 }}
               >
-                {/* 左側: 日数・年収 （レイアウト調整なし）*/}
+                {/* 左側: 日数・年収 */}
                 <Box
                   sx={{
                     display: "flex",
@@ -832,9 +831,7 @@ export default function MainApp() {
                   </Typography>
                 </Box>
 
-                {/* 中央は空にして、下の行に時計と収支を配置するためレイアウトをシンプルに保つ */}
-
-                {/* 右側: 世帯合算スイッチ（レイアウト調整なし） */}
+                {/* 右側: 世帯合算スイッチ */}
                 <FormControlLabel
                   control={
                     <Switch
@@ -873,12 +870,13 @@ export default function MainApp() {
                   <Typography variant="caption" sx={{ opacity: 0.7 }}>
                     {realtimeLabel}
                   </Typography>
-                  <Typography variant="h4" fontWeight="bold">
+                  {/* ★修正: リアルタイム収支 (確定) の金額を h6 に統一 */}
+                  <Typography variant="h6" fontWeight="bold">
                     ¥{currentRealtimeEarnings.toLocaleString()}
                   </Typography>
                 </Box>
 
-                {/* ★修正: アナログ時計をリアルタイム収支と着地見込みの間に配置 */}
+                {/* アナログ時計 */}
                 <Box
                   sx={{
                     flexShrink: 0,
@@ -890,15 +888,14 @@ export default function MainApp() {
                     borderRadius: "50%",
                   }}
                 >
-                  <AnalogClock currentTheme={currentTheme} isNeon={isNeon} />{" "}
-                  {/* propsを渡す */}
+                  <AnalogClock currentTheme={currentTheme} isNeon={isNeon} />
                 </Box>
-                {/* ★修正ここまで */}
 
                 <Box sx={{ textAlign: "right" }}>
                   <Typography variant="caption" sx={{ opacity: 0.7 }}>
                     着地見込み
                   </Typography>
+                  {/* 着地見込みの金額は元から h6 */}
                   <Typography variant="h6">
                     ¥{currentProjected?.toLocaleString() || 0}
                   </Typography>
