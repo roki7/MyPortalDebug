@@ -1,5 +1,7 @@
 // src/components/FinanceTab.jsx
 import React, { useState, useRef } from "react";
+// ★追加: テーマ利用のため
+import { useTheme } from "@mui/material/styles";
 import {
   Box,
   Typography,
@@ -49,8 +51,8 @@ import AdSenseBanner from "./AdSenseBanner";
 export default function FinanceTab({
   accounts,
   payments = [],
-  templates = [], // デフォルト値追加
-  myLinks = [], // デフォルト値追加
+  templates = [],
+  myLinks = [],
   currentDate,
   onAddAccount,
   onUpdateAccount,
@@ -58,26 +60,33 @@ export default function FinanceTab({
   onUpdatePayment,
   onAddTemplate,
   onDeleteTemplate,
-  recurring = [], // デフォルト値追加
+  recurring = [],
   onAddRecurring,
   onUpdateRecurring,
+  onDeleteRecurring,
   onUpdateBalance,
   onTogglePaid,
   onPrevMonth,
   onNextMonth,
-  shifts = {}, // ★追加: 収入計算用
-  jobs = [], // ★追加: 収入計算用
-  settings = {}, // ★追加: 固定費設定用
+  // ★追加: 集計に必要なデータを受け取る
+  shifts = {},
+  jobs = [],
+  settings = {},
 }) {
+  const theme = useTheme();
+  // ★追加: ダークモード判定
+  const isDark = theme.palette.mode === "dark";
+
+  const yearMonth = format(currentDate, "yyyy-MM");
   const [subTab, setSubTab] = useState(0);
 
-  // モーダル用State
+  // モーダル
   const [openPaymentDialog, setOpenPaymentDialog] = useState(false);
   const [openCashDialog, setOpenCashDialog] = useState(false);
   const [openCreditDialog, setOpenCreditDialog] = useState(false);
   const [openRecurringDialog, setOpenRecurringDialog] = useState(false);
 
-  // スワイプ判定
+  // --- スワイプ判定 ---
   const touchStartRef = useRef(null);
   const minSwipeDistance = 30;
   const onTouchStart = (e) => {
@@ -86,7 +95,6 @@ export default function FinanceTab({
       y: e.touches[0].clientY,
     };
   };
-  const onTouchMove = () => {}; // 何もしないがイベントハンドラとして必要なら定義
   const onTouchEnd = (e) => {
     if (!touchStartRef.current) return;
     const touchEnd = {
@@ -95,13 +103,13 @@ export default function FinanceTab({
     };
     const dx = touchStartRef.current.x - touchEnd.x;
     const dy = touchStartRef.current.y - touchEnd.y;
-    // 横移動が大きく、かつ縦移動より大きい場合のみ
     if (Math.abs(dx) > minSwipeDistance && Math.abs(dx) > Math.abs(dy)) {
       if (dx > 0) onNextMonth && onNextMonth();
       else onPrevMonth && onPrevMonth();
     }
     touchStartRef.current = null;
   };
+  // -------------------
 
   // 編集用State
   const [editPayment, setEditPayment] = useState({
@@ -133,14 +141,11 @@ export default function FinanceTab({
     targetPaymentId: null,
   });
 
-  // --- ヘルパー & 計算ロジック ---
+  // Helpers
   const currentMonthStr = format(currentDate, "yyyy-MM");
-
-  // 今月の支払いリスト
   const monthPayments = payments.filter(
     (p) => p.month === currentMonthStr && !p.isRecurring
   );
-  // 今月の固定費リスト
   const monthFixedCosts = payments.filter(
     (p) => p.month === currentMonthStr && p.isRecurring
   );
@@ -148,10 +153,11 @@ export default function FinanceTab({
   const cashAccounts = accounts.filter((a) => a.type !== "credit");
   const creditAccounts = accounts.filter((a) => a.type === "credit");
 
-  // ★追加: 収入計算ロジック (シフトから)
+  // ★追加: 収入・支出・残高の自動計算ロジック
+  // 1. 収入 (シフトから)
   let totalIncome = 0;
   const currentMonthShifts = Object.entries(shifts).filter(([date, _]) =>
-    date.startsWith(currentMonthStr)
+    date.startsWith(yearMonth)
   );
   currentMonthShifts.forEach(([date, dayShifts]) => {
     dayShifts.forEach((shift) => {
@@ -166,24 +172,23 @@ export default function FinanceTab({
             ? parseInt(shift.breakTime)
             : job.breakTime || 0;
         const minutes = (en - st) / (1000 * 60) - brk;
-        if (minutes > 0) {
-          totalIncome += Math.floor((minutes / 60) * job.value);
-        }
+        if (minutes > 0) totalIncome += Math.floor((minutes / 60) * job.value);
       }
     });
   });
 
-  // ★追加: 支出計算 (固定費含む)
+  // 2. 支出 (リスト + 固定費)
   const totalSpending = [...monthPayments, ...monthFixedCosts].reduce(
     (sum, p) => sum + parseInt(p.amount || 0),
     0
   );
 
-  // ★追加: 設定画面からの固定費(家賃など)
+  // 3. 設定上の固定費 (家賃など)
   const settingFixedCost = parseInt(settings?.fixedCost) || 0;
 
-  // ★追加: 収支バランス
+  // 4. 残高
   const balance = totalIncome - totalSpending - settingFixedCost;
+  // ----------------------------------------------------
 
   const getAccountIcon = (accId) => {
     const acc = accounts.find((a) => a.id === accId);
@@ -195,7 +200,7 @@ export default function FinanceTab({
     );
   };
 
-  // --- Handlers ---
+  // Handlers
   const handleOpenAddPayment = () => {
     setEditPayment({
       id: null,
@@ -224,17 +229,23 @@ export default function FinanceTab({
   };
 
   const handleEditFixedCost = (paymentItem) => {
-    const recDef = recurring.find((r) => r.id === paymentItem.recurringId);
-    if (!recDef) {
-      alert("元の設定が見つかりませんでした");
-      return;
+    const recDef = recurring.find((r) => r.id === item.recurringId);
+    // recurringが見つからない場合のフォールバックは省略（既存コード依存）
+    // リストから編集ボタンを押した時の処理
+    if (paymentItem.recurringId) {
+      const recDef = recurring.find((r) => r.id === paymentItem.recurringId);
+      if (recDef) {
+        setEditRecurring({
+          ...recDef,
+          amount: recDef.amount || paymentItem.amount,
+          targetPaymentId: paymentItem.id,
+        });
+        setOpenRecurringDialog(true);
+      } else {
+        // 元設定が消えている場合など
+        alert("定期設定が見つかりません");
+      }
     }
-    setEditRecurring({
-      ...recDef,
-      amount: recDef.amount || paymentItem.amount,
-      targetPaymentId: paymentItem.id,
-    });
-    setOpenRecurringDialog(true);
   };
 
   const handleSaveRecurring = () => {
@@ -316,9 +327,8 @@ export default function FinanceTab({
 
   return (
     <Box
-      sx={{ pb: 15 }}
+      sx={{ pb: 15, minHeight: "80vh" }}
       onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
       <Tabs
@@ -342,7 +352,7 @@ export default function FinanceTab({
               <Grid container spacing={2} textAlign="center">
                 <Grid item xs={6}>
                   <Typography variant="caption" color="text.secondary">
-                    収入(見込)
+                    収入 (見込)
                   </Typography>
                   <Typography variant="h6" color="success.main">
                     ¥{totalIncome.toLocaleString()}
@@ -350,7 +360,7 @@ export default function FinanceTab({
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="caption" color="text.secondary">
-                    支出計
+                    支出 (固定費込)
                   </Typography>
                   <Typography variant="h6" color="error.main">
                     ¥{(totalSpending + settingFixedCost).toLocaleString()}
@@ -381,7 +391,7 @@ export default function FinanceTab({
                 }}
               >
                 <Typography variant="h6">
-                  {format(currentDate, "M月", { locale: ja })}の出費
+                  {format(currentDate, "M月")}の出費
                 </Typography>
                 <Button
                   startIcon={<Add />}
@@ -442,8 +452,6 @@ export default function FinanceTab({
               </List>
             </CardContent>
           </Card>
-
-          {/* テンプレートチップ */}
           <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
             {templates.map((t) => (
               <Chip
@@ -481,7 +489,7 @@ export default function FinanceTab({
         <Box>
           <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: "bold" }}>
-              {format(currentDate, "M月", { locale: ja })}の固定費
+              {format(currentDate, "M月")}の固定費
             </Typography>
             <Button
               startIcon={<Add />}
@@ -513,7 +521,7 @@ export default function FinanceTab({
                 <ListItem
                   key={item.id}
                   sx={{
-                    bgcolor: "white",
+                    bgcolor: "background.paper", // Theme aware
                     mb: 1,
                     borderRadius: 1,
                     boxShadow: 1,
@@ -568,14 +576,14 @@ export default function FinanceTab({
             variant="caption"
             display="block"
             align="center"
-            sx={{ mt: 2, color: "gray" }}
+            sx={{ mt: 2, color: "text.secondary" }}
           >
             ※鉛筆マークを押すと、設定（金額・支払元・日付・Link）を変更できます。
           </Typography>
         </Box>
       )}
 
-      {/* 3. 資産タブ (変更なし) */}
+      {/* 3. 資産タブ (★修正: ダークモード対応) */}
       {subTab === 2 && (
         <Box>
           <Button
@@ -653,14 +661,21 @@ export default function FinanceTab({
                       <Box
                         sx={{
                           mt: 1,
-                          bgcolor: "#f9f9f9",
+                          // ★修正: ダークモード時は暗めの背景に
+                          bgcolor: isDark
+                            ? "rgba(255,255,255,0.05)"
+                            : "#f9f9f9",
                           p: 1,
                           borderRadius: 1,
                         }}
                       >
-                        <Typography variant="caption" display="block">
+                        <Typography
+                          variant="caption"
+                          display="block"
+                          color="text.secondary"
+                        >
                           {format(currentDate, "M月")}の利用: ¥
-                          {totalOut.toLocaleString()}
+                          {totalOut.toLocaleString()} {/* ★修正: 文字色調整 */}
                         </Typography>
                         {accPayments.length > 0 && (
                           <List dense disablePadding>
@@ -701,7 +716,7 @@ export default function FinanceTab({
         </Box>
       )}
 
-      {/* 4. カードタブ (変更なし) */}
+      {/* 4. カードタブ (★修正: ダークモード対応) */}
       {subTab === 3 && (
         <Box>
           <Button
@@ -784,7 +799,10 @@ export default function FinanceTab({
                           gap: 1,
                           fontSize: 12,
                           color: "text.secondary",
-                          bgcolor: "#f5f5f5",
+                          // ★修正: ダークモード対応
+                          bgcolor: isDark
+                            ? "rgba(255,255,255,0.05)"
+                            : "#f5f5f5",
                           p: 1,
                           borderRadius: 1,
                           mb: 1,
@@ -796,13 +814,20 @@ export default function FinanceTab({
                       </Box>
                       <Box
                         sx={{
-                          bgcolor: "#fff",
-                          border: "1px solid #eee",
+                          // ★修正: ダークモード対応
+                          bgcolor: isDark ? "transparent" : "#fff",
+                          border: isDark
+                            ? "1px solid rgba(255,255,255,0.12)"
+                            : "1px solid #eee",
                           p: 1,
                           borderRadius: 1,
                         }}
                       >
-                        <Typography variant="caption" fontWeight="bold">
+                        <Typography
+                          variant="caption"
+                          fontWeight="bold"
+                          color="text.primary"
+                        >
                           {format(currentDate, "M月")}の利用 (¥
                           {totalOut.toLocaleString()})
                         </Typography>
@@ -818,7 +843,11 @@ export default function FinanceTab({
                             </ListItem>
                           ))}
                           {accPayments.length === 0 && (
-                            <Typography variant="caption" display="block">
+                            <Typography
+                              variant="caption"
+                              display="block"
+                              color="text.secondary"
+                            >
                               利用なし
                             </Typography>
                           )}
@@ -849,7 +878,7 @@ export default function FinanceTab({
         </Box>
       )}
 
-      {/* --- ダイアログ群 (そのまま) --- */}
+      {/* --- ダイアログ群 (機能はそのまま) --- */}
       {/* 支払いダイアログ */}
       <Dialog
         open={openPaymentDialog}
@@ -1069,7 +1098,6 @@ export default function FinanceTab({
         </DialogActions>
       </Dialog>
 
-      {/* 口座編集ダイアログ */}
       <Dialog open={openCashDialog} onClose={() => setOpenCashDialog(false)}>
         <DialogTitle>
           {editAccount.id ? "編集" : "銀行口座・財布を追加"}
@@ -1125,7 +1153,6 @@ export default function FinanceTab({
         </DialogActions>
       </Dialog>
 
-      {/* カード編集ダイアログ */}
       <Dialog
         open={openCreditDialog}
         onClose={() => setOpenCreditDialog(false)}
