@@ -1,5 +1,5 @@
 // src/components/ShoppingTab.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Box,
   Typography,
@@ -40,7 +40,7 @@ import {
   Close,
 } from "@mui/icons-material";
 import AdSenseBanner from "./AdSenseBanner";
-import { format, formatDistanceToNow, parseISO } from "date-fns";
+import { format, formatDistanceToNow, parseISO, isSameMonth } from "date-fns";
 import { ja } from "date-fns/locale";
 
 export default function ShoppingTab({
@@ -48,6 +48,9 @@ export default function ShoppingTab({
   onUpdateShopping,
   onAddPayment,
   accounts,
+  currentDate,
+  onPrevMonth,
+  onNextMonth,
 }) {
   const [tab, setTab] = useState(0); // 0:List, 1:Stock, 2:History
 
@@ -55,6 +58,35 @@ export default function ShoppingTab({
   const list = shopping.list || [];
   const stock = shopping.stock || [];
   const history = shopping.history || [];
+
+  const touchStartRef = useRef(null);
+  const minSwipeDistance = 30;
+
+  const onTouchStart = (e) => {
+    touchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+    };
+  };
+
+  const onTouchEnd = (e) => {
+    if (!touchStartRef.current) return;
+    const touchEnd = {
+      x: e.changedTouches[0].clientX,
+      y: e.changedTouches[0].clientY,
+    };
+    const distanceX = touchStartRef.current.x - touchEnd.x;
+    const distanceY = touchStartRef.current.y - touchEnd.y;
+
+    if (
+      Math.abs(distanceX) > minSwipeDistance &&
+      Math.abs(distanceX) > Math.abs(distanceY)
+    ) {
+      if (distanceX > 0) onNextMonth && onNextMonth();
+      else onPrevMonth && onPrevMonth();
+    }
+    touchStartRef.current = null;
+  };
 
   // 入力・検索系State
   const [newItemName, setNewItemName] = useState("");
@@ -276,8 +308,16 @@ export default function ShoppingTab({
     );
   });
 
+  const monthlyHistory = history.filter((item) =>
+    isSameMonth(parseISO(item.date), currentDate)
+  );
+
   return (
-    <Box sx={{ pb: 15 }}>
+    <Box
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      sx={{ pb: 15, minHeight: "80vh" }}
+    >
       {/* タブ切り替え */}
       <Tabs
         value={tab}
@@ -488,37 +528,44 @@ export default function ShoppingTab({
 
       {/* --- 3. 履歴 --- */}
       {tab === 2 && (
-        <Card>
-          <List dense>
-            {history.map((item, index) => {
-              let dateLabel = "";
-              try {
-                dateLabel = formatDistanceToNow(parseISO(item.date), {
-                  addSuffix: true,
-                  locale: ja,
-                });
-              } catch (e) {
-                dateLabel = "不明";
-              }
-
-              return (
-                <ListItem key={index} divider>
-                  <ListItemText
-                    primary={item.name}
-                    secondary={`${dateLabel} に購入 ${
-                      item.price ? `(¥${item.price})` : ""
-                    }`}
-                  />
-                </ListItem>
-              );
-            })}
-            {history.length === 0 && (
-              <Typography align="center" color="textSecondary" sx={{ py: 4 }}>
-                履歴はありません
-              </Typography>
-            )}
-          </List>
-        </Card>
+        <Box>
+          <Typography
+            variant="subtitle1"
+            gutterBottom
+            sx={{ textAlign: "center", fontWeight: "bold" }}
+          >
+            {format(currentDate, "yyyy年M月")}の購入履歴
+          </Typography>
+          <Card>
+            <List dense>
+              {monthlyHistory.map((item, index) => {
+                let dateLabel = "";
+                try {
+                  dateLabel = format(parseISO(item.date), "M/d(E)", {
+                    locale: ja,
+                  });
+                } catch (e) {
+                  dateLabel = "不明";
+                }
+                return (
+                  <ListItem key={index} divider>
+                    <ListItemText
+                      primary={item.name}
+                      secondary={`${dateLabel} ${
+                        item.price ? `¥${item.price.toLocaleString()}` : ""
+                      }`}
+                    />
+                  </ListItem>
+                );
+              })}
+              {monthlyHistory.length === 0 && (
+                <Typography align="center" color="textSecondary" sx={{ py: 4 }}>
+                  この月の履歴はありません
+                </Typography>
+              )}
+            </List>
+          </Card>
+        </Box>
       )}
 
       {/* --- ダイアログ: 在庫追加・編集 --- */}

@@ -905,6 +905,9 @@ export default function MainApp() {
               onUpdateStock={handleUpdateStock}
               onAddPayment={handleAddPayment}
               accounts={accounts}
+              currentDate={currentDate}
+              onPrevMonth={handlePrevMonth}
+              onNextMonth={handleNextMonth}
             />
           )}
           {tabIndex === 3 && (

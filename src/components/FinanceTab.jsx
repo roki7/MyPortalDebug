@@ -1,5 +1,5 @@
 // src/components/FinanceTab.jsx
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   Box,
   Typography,
@@ -9,7 +9,6 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
   ListItemIcon,
   IconButton,
   Button,
@@ -33,26 +32,25 @@ import {
 import {
   Add,
   Edit,
-  Delete,
   AccountBalance,
   CheckCircle,
   RadioButtonUnchecked,
   Loop,
   CreditCard,
-  CalendarToday,
   Link as LinkIcon,
   HelpOutline,
   ListAlt,
   AccountBalanceWallet,
 } from "@mui/icons-material";
-import { format, subDays, setDate, parseISO } from "date-fns";
+import { format, subDays, setDate } from "date-fns";
+import { ja } from "date-fns/locale";
 import AdSenseBanner from "./AdSenseBanner";
 
 export default function FinanceTab({
   accounts,
-  payments,
-  templates,
-  myLinks,
+  payments = [],
+  templates = [], // デフォルト値追加
+  myLinks = [], // デフォルト値追加
   currentDate,
   onAddAccount,
   onUpdateAccount,
@@ -60,23 +58,50 @@ export default function FinanceTab({
   onUpdatePayment,
   onAddTemplate,
   onDeleteTemplate,
-  recurring,
+  recurring = [], // デフォルト値追加
   onAddRecurring,
   onUpdateRecurring,
-  onDeleteRecurring,
   onUpdateBalance,
   onTogglePaid,
   onPrevMonth,
   onNextMonth,
+  shifts = {}, // ★追加: 収入計算用
+  jobs = [], // ★追加: 収入計算用
+  settings = {}, // ★追加: 固定費設定用
 }) {
   const [subTab, setSubTab] = useState(0);
 
-  // モーダル
+  // モーダル用State
   const [openPaymentDialog, setOpenPaymentDialog] = useState(false);
   const [openCashDialog, setOpenCashDialog] = useState(false);
   const [openCreditDialog, setOpenCreditDialog] = useState(false);
-
   const [openRecurringDialog, setOpenRecurringDialog] = useState(false);
+
+  // スワイプ判定
+  const touchStartRef = useRef(null);
+  const minSwipeDistance = 30;
+  const onTouchStart = (e) => {
+    touchStartRef.current = {
+      x: e.touches[0].clientX,
+      y: e.touches[0].clientY,
+    };
+  };
+  const onTouchMove = () => {}; // 何もしないがイベントハンドラとして必要なら定義
+  const onTouchEnd = (e) => {
+    if (!touchStartRef.current) return;
+    const touchEnd = {
+      x: e.changedTouches[0].clientX,
+      y: e.changedTouches[0].clientY,
+    };
+    const dx = touchStartRef.current.x - touchEnd.x;
+    const dy = touchStartRef.current.y - touchEnd.y;
+    // 横移動が大きく、かつ縦移動より大きい場合のみ
+    if (Math.abs(dx) > minSwipeDistance && Math.abs(dx) > Math.abs(dy)) {
+      if (dx > 0) onNextMonth && onNextMonth();
+      else onPrevMonth && onPrevMonth();
+    }
+    touchStartRef.current = null;
+  };
 
   // 編集用State
   const [editPayment, setEditPayment] = useState({
@@ -96,7 +121,6 @@ export default function FinanceTab({
     paymentDay: "",
     linkId: "",
   });
-  // 固定費編集用: targetPaymentId は、リストから編集した場合にその「今月の支払いデータID」を保持する
   const [editRecurring, setEditRecurring] = useState({
     id: null,
     name: "",
@@ -109,34 +133,57 @@ export default function FinanceTab({
     targetPaymentId: null,
   });
 
-  // スワイプ処理
-  const [touchStart, setTouchStart] = useState(null);
-  const [touchEnd, setTouchEnd] = useState(null);
-  const minSwipeDistance = 50;
-
-  const onTouchStart = (e) => {
-    setTouchEnd(null);
-    setTouchStart(e.targetTouches[0].clientX);
-  };
-  const onTouchMove = (e) => setTouchEnd(e.targetTouches[0].clientX);
-  const onTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-    const distance = touchStart - touchEnd;
-    if (distance > minSwipeDistance) onNextMonth();
-    if (distance < -minSwipeDistance) onPrevMonth();
-  };
-
-  // Helpers
+  // --- ヘルパー & 計算ロジック ---
   const currentMonthStr = format(currentDate, "yyyy-MM");
+
+  // 今月の支払いリスト
   const monthPayments = payments.filter(
     (p) => p.month === currentMonthStr && !p.isRecurring
   );
+  // 今月の固定費リスト
   const monthFixedCosts = payments.filter(
     (p) => p.month === currentMonthStr && p.isRecurring
   );
 
   const cashAccounts = accounts.filter((a) => a.type !== "credit");
   const creditAccounts = accounts.filter((a) => a.type === "credit");
+
+  // ★追加: 収入計算ロジック (シフトから)
+  let totalIncome = 0;
+  const currentMonthShifts = Object.entries(shifts).filter(([date, _]) =>
+    date.startsWith(currentMonthStr)
+  );
+  currentMonthShifts.forEach(([date, dayShifts]) => {
+    dayShifts.forEach((shift) => {
+      const job = jobs.find((j) => j.id === shift.jobId);
+      if (!job) return;
+      if (shift.amount) totalIncome += parseInt(shift.amount);
+      if (job.type === "hourly" && shift.start && shift.end) {
+        const st = new Date(`1970-01-01T${shift.start}`);
+        const en = new Date(`1970-01-01T${shift.end}`);
+        const brk =
+          shift.breakTime !== undefined
+            ? parseInt(shift.breakTime)
+            : job.breakTime || 0;
+        const minutes = (en - st) / (1000 * 60) - brk;
+        if (minutes > 0) {
+          totalIncome += Math.floor((minutes / 60) * job.value);
+        }
+      }
+    });
+  });
+
+  // ★追加: 支出計算 (固定費含む)
+  const totalSpending = [...monthPayments, ...monthFixedCosts].reduce(
+    (sum, p) => sum + parseInt(p.amount || 0),
+    0
+  );
+
+  // ★追加: 設定画面からの固定費(家賃など)
+  const settingFixedCost = parseInt(settings?.fixedCost) || 0;
+
+  // ★追加: 収支バランス
+  const balance = totalIncome - totalSpending - settingFixedCost;
 
   const getAccountIcon = (accId) => {
     const acc = accounts.find((a) => a.id === accId);
@@ -148,9 +195,8 @@ export default function FinanceTab({
     );
   };
 
-  // Handlers
+  // --- Handlers ---
   const handleOpenAddPayment = () => {
-    // ★修正: 初期値として今日の日付を設定
     setEditPayment({
       id: null,
       name: "",
@@ -164,7 +210,6 @@ export default function FinanceTab({
 
   const handleSavePayment = () => {
     if (editPayment.name && editPayment.amount && editPayment.accountId) {
-      // 日付が空欄の場合は今日を入れる（念のため）
       const paymentDate = editPayment.date || format(new Date(), "yyyy-MM-dd");
       const payData = {
         ...editPayment,
@@ -178,19 +223,16 @@ export default function FinanceTab({
     }
   };
 
-  // 固定費リストから編集ボタンを押した時の処理
   const handleEditFixedCost = (paymentItem) => {
-    // 親の固定費設定を探す
     const recDef = recurring.find((r) => r.id === paymentItem.recurringId);
     if (!recDef) {
       alert("元の設定が見つかりませんでした");
       return;
     }
-    // 固定費設定の内容でダイアログを開く
     setEditRecurring({
       ...recDef,
-      amount: recDef.amount || paymentItem.amount, // 設定に金額がなければ今の金額
-      targetPaymentId: paymentItem.id, // ★今月のこの支払いを更新するためにIDを控える
+      amount: recDef.amount || paymentItem.amount,
+      targetPaymentId: paymentItem.id,
     });
     setOpenRecurringDialog(true);
   };
@@ -201,7 +243,6 @@ export default function FinanceTab({
         ? parseInt(editRecurring.amount)
         : 0;
       const recId = editRecurring.id || Date.now().toString();
-
       const recData = {
         id: recId,
         name: editRecurring.name,
@@ -214,36 +255,26 @@ export default function FinanceTab({
       };
 
       if (editRecurring.id) {
-        // --- 更新 ---
         onUpdateRecurring(recData);
-
-        // ★リストから編集した場合(targetPaymentIdあり)、今月の支払いデータも更新する
         if (editRecurring.targetPaymentId) {
           const targetPayment = payments.find(
             (p) => p.id === editRecurring.targetPaymentId
           );
           if (targetPayment) {
-            // 新しい支払日を計算 (今月の年・月 + 新しい設定日)
-            // ※日付が無効(例えば2月30日)の場合の厳密な処理は date-fns/setDate がよしなに処理する(翌月1日等)が、ここでは簡易的に設定
             const currentPaymentDate = new Date(targetPayment.date);
             const newDate = setDate(currentPaymentDate, recData.day);
-
             const updatedPayment = {
               ...targetPayment,
               name: recData.name,
-              amount: amountVal, // 設定金額で上書き
+              amount: amountVal,
               accountId: recData.accountId,
               date: format(newDate, "yyyy-MM-dd"),
-              // monthは変えない
             };
             onUpdatePayment(updatedPayment);
           }
         }
       } else {
-        // --- 新規追加 ---
         onAddRecurring(recData);
-
-        // 新規追加時も即座に今月分のリストに表示させる
         const targetDate = setDate(currentDate, recData.day);
         const paymentData = {
           id: Date.now() + Math.random(),
@@ -305,6 +336,41 @@ export default function FinanceTab({
       {/* 1. 収支タブ */}
       {subTab === 0 && (
         <Box>
+          {/* ★追加: 今月のサマリーカード */}
+          <Card sx={{ mb: 2, bgcolor: "background.paper" }}>
+            <CardContent>
+              <Grid container spacing={2} textAlign="center">
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">
+                    収入(見込)
+                  </Typography>
+                  <Typography variant="h6" color="success.main">
+                    ¥{totalIncome.toLocaleString()}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="caption" color="text.secondary">
+                    支出計
+                  </Typography>
+                  <Typography variant="h6" color="error.main">
+                    ¥{(totalSpending + settingFixedCost).toLocaleString()}
+                  </Typography>
+                </Grid>
+              </Grid>
+              <Divider sx={{ my: 1 }} />
+              <Typography
+                variant="h4"
+                align="center"
+                sx={{
+                  color: balance >= 0 ? "primary.main" : "error.main",
+                  fontWeight: "bold",
+                }}
+              >
+                {balance >= 0 ? "+" : ""}¥{balance.toLocaleString()}
+              </Typography>
+            </CardContent>
+          </Card>
+
           <Card sx={{ mb: 2 }}>
             <CardContent>
               <Box
@@ -315,7 +381,7 @@ export default function FinanceTab({
                 }}
               >
                 <Typography variant="h6">
-                  {format(currentDate, "M月")}の出費
+                  {format(currentDate, "M月", { locale: ja })}の出費
                 </Typography>
                 <Button
                   startIcon={<Add />}
@@ -376,6 +442,8 @@ export default function FinanceTab({
               </List>
             </CardContent>
           </Card>
+
+          {/* テンプレートチップ */}
           <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
             {templates.map((t) => (
               <Chip
@@ -413,7 +481,7 @@ export default function FinanceTab({
         <Box>
           <Box sx={{ display: "flex", justifyContent: "space-between", mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: "bold" }}>
-              {format(currentDate, "M月")}の固定費
+              {format(currentDate, "M月", { locale: ja })}の固定費
             </Typography>
             <Button
               startIcon={<Add />}
@@ -450,7 +518,6 @@ export default function FinanceTab({
                     borderRadius: 1,
                     boxShadow: 1,
                   }}
-                  // ★修正: 編集ボタンで詳細な編集ダイアログを開くように変更
                   secondaryAction={
                     <IconButton
                       size="small"
@@ -504,13 +571,11 @@ export default function FinanceTab({
             sx={{ mt: 2, color: "gray" }}
           >
             ※鉛筆マークを押すと、設定（金額・支払元・日付・Link）を変更できます。
-            <br />
-            変更は当月分および今後の自動生成分に反映されます。
           </Typography>
         </Box>
       )}
 
-      {/* 3. 資産タブ */}
+      {/* 3. 資産タブ (変更なし) */}
       {subTab === 2 && (
         <Box>
           <Button
@@ -636,7 +701,7 @@ export default function FinanceTab({
         </Box>
       )}
 
-      {/* 4. カードタブ */}
+      {/* 4. カードタブ (変更なし) */}
       {subTab === 3 && (
         <Box>
           <Button
@@ -784,6 +849,7 @@ export default function FinanceTab({
         </Box>
       )}
 
+      {/* --- ダイアログ群 (そのまま) --- */}
       {/* 支払いダイアログ */}
       <Dialog
         open={openPaymentDialog}
@@ -807,7 +873,7 @@ export default function FinanceTab({
             <Button
               variant="outlined"
               size="small"
-              onClickÍÍ={() =>
+              onClick={() =>
                 setEditPayment({
                   ...editPayment,
                   date: format(subDays(new Date(), 1), "yyyy-MM-dd"),
@@ -1003,6 +1069,7 @@ export default function FinanceTab({
         </DialogActions>
       </Dialog>
 
+      {/* 口座編集ダイアログ */}
       <Dialog open={openCashDialog} onClose={() => setOpenCashDialog(false)}>
         <DialogTitle>
           {editAccount.id ? "編集" : "銀行口座・財布を追加"}
@@ -1058,6 +1125,7 @@ export default function FinanceTab({
         </DialogActions>
       </Dialog>
 
+      {/* カード編集ダイアログ */}
       <Dialog
         open={openCreditDialog}
         onClose={() => setOpenCreditDialog(false)}
@@ -1148,6 +1216,7 @@ export default function FinanceTab({
           </Button>
         </DialogActions>
       </Dialog>
+
       <AdSenseBanner
         clientId="ca-pub-2913122779764758" // ★あなたのパブリッシャーIDを入れてください
         slotId="5440394824" // ★広告ユニットIDを入れてください
