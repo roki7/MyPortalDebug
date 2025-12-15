@@ -8,9 +8,6 @@ import LandingPage from "./components/LandingPage";
 function AppRoutes() {
   const location = useLocation();
 
-  // Firebase Auth の内部URLはReact Routerに処理させない
-  if (location.pathname.startsWith("/__/auth")) return null;
-
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />

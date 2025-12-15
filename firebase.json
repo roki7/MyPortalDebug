@@ -2,7 +2,6 @@
   "hosting": {
     "public": "dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }],
     "headers": [
       {
         "source": "/index.html",
@@ -12,9 +11,14 @@
         "source": "/sw.js",
         "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       }
+    ],
+    "rewrites": [
+      { "source": "/", "destination": "/index.html" },
+      { "source": "/app", "destination": "/index.html" },
+      { "source": "/app/**", "destination": "/index.html" },
+      { "source": "/terms", "destination": "/index.html" }
     ]
   },
-
   "functions": [
     {
       "source": "functions",
