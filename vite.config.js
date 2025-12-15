@@ -10,6 +10,7 @@ export default defineConfig({
       injectRegister: "auto",
       devOptions: { enabled: false },
       workbox: {
+        navigateFallbackDenylist: [/^\/__\/auth\//],
         cleanupOutdatedCaches: true,
         globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
       },

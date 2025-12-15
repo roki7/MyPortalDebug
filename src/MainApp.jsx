@@ -101,6 +101,7 @@ export default function MainApp() {
     currentUser,
     userProfile,
     login,
+    isLoggingIn,
     logout,
     canSaveCloud,
     canShareGroup,
@@ -596,7 +597,7 @@ export default function MainApp() {
   };
 
   const LoginStatus = () => {
-    if (currentUser)
+    if (currentUser) {
       return (
         <IconButton
           onClick={() => {
@@ -610,16 +611,22 @@ export default function MainApp() {
           />
         </IconButton>
       );
+    }
+
     return (
       <Button
-        onClick={login}
+        onClick={() => {
+          console.log("[UI] login clicked");
+          login();
+        }}
+        disabled={isLoggingIn}
         size="small"
         variant="contained"
         color="secondary"
         startIcon={<Login />}
         sx={{ fontSize: 10 }}
       >
-        ログイン
+        {isLoggingIn ? "ログイン中..." : "ログイン"}
       </Button>
     );
   };
