@@ -109,17 +109,20 @@ export const AuthProvider = ({ children }) => {
   /* ============
      AUTH INIT
   ============ */
+  const didHandleRedirect = useRef(false);
+
   useEffect(() => {
-    // 🔴 redirectログイン後の復帰を確実にする
+    if (didHandleRedirect.current) return;
+    didHandleRedirect.current = true;
+
     (async () => {
       try {
-        console.log("[auth] getRedirectResult start");
-        const r = await getRedirectResult(auth);
-        console.log("[auth] getRedirectResult result", r?.user?.uid ?? null);
+        await getRedirectResult(auth);
       } catch (e) {
-        console.warn("[auth] getRedirectResult error", e?.code, e);
+        console.warn("getRedirectResult error:", e?.code, e);
       }
     })();
+
     const unsub = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
 
