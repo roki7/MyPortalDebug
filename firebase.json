@@ -1,18 +1,29 @@
 {
   "hosting": {
     "public": "dist",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Cross-Origin-Opener-Policy",
+            "value": "unsafe-none"
+          }
+        ]
+      }
     ],
     "rewrites": [
+      {
+        "source": "/__/auth/**",
+        "destination": "/__/auth/index.html"
+      },
       {
         "source": "**",
         "destination": "/index.html"
       }
     ]
   },
+
   "functions": [
     {
       "source": "functions",
