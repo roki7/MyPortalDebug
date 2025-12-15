@@ -23,9 +23,9 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
+      {/* <AuthProvider> */}
+      <AppRoutes />
+      {/* </AuthProvider> */}
     </BrowserRouter>
   );
 }
