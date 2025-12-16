@@ -1,4 +1,3 @@
-// src/components/ShiftEditModal.jsx
 import React, { useState, useEffect } from "react";
 import {
   Dialog,
@@ -45,7 +44,11 @@ export default function ShiftEditModal({
       setBreakTime(
         shift.breakTime !== undefined ? shift.breakTime : job?.breakTime || 0
       );
-      setStatus(shift.status || "attended");
+      // データに古い "early_leave" が残っていたら "paid_leave" か "attended" に読み替える
+      // ここでは安全に "attended" (通常) に戻し、ユーザーに再選択させます
+      setStatus(
+        shift.status === "early_leave" ? "attended" : shift.status || "attended"
+      );
     }
   }, [shift, job]);
 
@@ -78,7 +81,8 @@ export default function ShiftEditModal({
 
   if (!shift) return null;
 
-  const isTimeDisabled = status === "early_leave" || status === "absence";
+  // 欠勤(absence)の時だけ時間をグレーアウト
+  const isTimeDisabled = status === "absence";
 
   // 色設定
   const paperBgColor = isDark ? theme.palette.background.paper : "#fff";
@@ -89,27 +93,30 @@ export default function ShiftEditModal({
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
       <DialogTitle>{job?.name || shift.customName || "詳細編集"}</DialogTitle>
       <DialogContent>
-        {/* ステータス変更 */}
+        {/* ステータス変更ボタンエリア */}
         <Box sx={{ mb: 2, display: "flex", gap: 1 }}>
+          {/* ★修正: 有給ボタン (早退を廃止) */}
           <Button
-            variant={status === "early_leave" ? "contained" : "outlined"}
-            onClick={() => handleToggleStatus("early_leave")}
-            color="warning"
+            variant={status === "paid_leave" ? "contained" : "outlined"}
+            onClick={() => handleToggleStatus("paid_leave")}
+            color="success"
             fullWidth
+            sx={{ fontWeight: "bold" }}
           >
-            早退
+            有給
           </Button>
           <Button
             variant={status === "absence" ? "contained" : "outlined"}
             onClick={() => handleToggleStatus("absence")}
             color="error"
             fullWidth
+            sx={{ fontWeight: "bold" }}
           >
             欠勤
           </Button>
         </Box>
 
-        {/* 時間変更（時給制の場合のみ） */}
+        {/* 時間変更（時給制の場合のみ表示） */}
         {job?.type === "hourly" && (
           <Paper
             elevation={0}

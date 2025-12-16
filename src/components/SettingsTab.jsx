@@ -1,5 +1,4 @@
-// src/components/SettingsTab.jsx
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   Box,
   Typography,
@@ -27,6 +26,10 @@ import {
   Radio,
   CircularProgress,
   Alert,
+  Dialog, // 追加
+  DialogTitle, // 追加
+  DialogContent, // 追加
+  DialogActions, // 追加
 } from "@mui/material";
 import {
   Edit,
@@ -38,9 +41,19 @@ import {
   PersonAdd,
   MyLocation,
   Map,
+  CloudDownload,
+  CloudUpload,
+  ExitToApp,
+  Login,
+  CreditCard,
+  Star,
+  CloudOff,
+  TableChart, // 追加: CSV用アイコン
 } from "@mui/icons-material";
+import { format, isWithinInterval, parseISO } from "date-fns"; // 追加
 import { useAuth } from "../AuthContext";
 import { PREFECTURES } from "../data";
+import { calculateShiftAmount } from "../logic"; // 追加: 金額計算用
 
 export default function SettingsTab({
   jobs,
@@ -56,8 +69,13 @@ export default function SettingsTab({
   onEditJobRequest,
   onAddJobRequest,
   sharedDocs,
+  shifts,
+  wishlist,
+  onRestoreData,
+  onLogout,
+  onLoginRequest,
+  onManagePlan,
 }) {
-  // isPremium を忘れずに取得
   const {
     userProfile,
     kickMember,
@@ -65,10 +83,12 @@ export default function SettingsTab({
     isOwner,
     createGroup,
     isPremium,
+    user,
   } = useAuth();
 
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
+  const fileInputRef = useRef(null);
 
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
@@ -78,6 +98,17 @@ export default function SettingsTab({
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState(null);
 
+  // --- CSV出力用State ---
+  const [csvDialogOpen, setCsvDialogOpen] = useState(false);
+  const [csvStartDate, setCsvStartDate] = useState(
+    format(new Date(), "yyyy-MM-01")
+  );
+  const [csvEndDate, setCsvEndDate] = useState(
+    format(new Date(), "yyyy-MM-dd")
+  );
+  const [csvDataType, setCsvDataType] = useState("shifts"); // "shifts" or "wishlist"
+
+  // --- 既存のハンドラー (省略なし) ---
   const handleRangeSubmit = () => {
     if (!rangeStart || !rangeEnd || !selectedRangeJob) {
       alert("期間と仕事を選択してください");
@@ -196,24 +227,165 @@ export default function SettingsTab({
     );
   };
 
-  const planName =
-    userProfile?.plan === "family"
-      ? "ファミリー"
-      : userProfile?.plan === "couple"
-      ? "カップル"
-      : "無料";
+  // --- バックアップ (JSON) ---
+  const handleBackup = () => {
+    if (!isPremium) return;
+    const backupData = {
+      version: "2.0",
+      timestamp: new Date().toISOString(),
+      data: { shifts, jobs, settings, wishlist },
+    };
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `myportal_backup_${new Date()
+      .toISOString()
+      .slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleRestoreClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target.result);
+        if (json.data && json.data.shifts && json.data.jobs) {
+          if (
+            window.confirm(
+              "現在のデータを上書きして復元しますか？\n※この操作は取り消せません。"
+            )
+          ) {
+            onRestoreData(json.data);
+            alert("復元が完了しました！");
+          }
+        } else {
+          alert("無効なバックアップファイルです。");
+        }
+      } catch (error) {
+        console.error(error);
+        alert("ファイルの読み込みに失敗しました。");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  // --- ★追加: CSVエクスポート処理 ---
+  const handleExportCsv = () => {
+    if (!isPremium) return;
+
+    let csvContent = "";
+    let filename = "";
+
+    // 日本語の文字化けを防ぐBOM (Byte Order Mark)
+    const bom = "\uFEFF";
+
+    if (csvDataType === "shifts") {
+      // 1. ヘッダー
+      csvContent +=
+        bom + "日付,仕事名,ステータス,開始時間,終了時間,休憩(分),金額(概算)\n";
+
+      const start = parseISO(csvStartDate);
+      const end = parseISO(csvEndDate);
+
+      // 2. データを期間でフィルタリングして行追加
+      Object.keys(shifts)
+        .sort()
+        .forEach((dateStr) => {
+          const dateObj = parseISO(dateStr);
+          if (isWithinInterval(dateObj, { start, end })) {
+            const dayShifts = shifts[dateStr];
+            dayShifts.forEach((shift) => {
+              // 自分のシフトのみ、または共有メンバーも含めるか？ -> 現状は全部出す
+              const job = jobs.find(
+                (j) => String(j.id) === String(shift.jobId)
+              );
+              const jobName = job ? job.name : "不明な仕事";
+
+              // ステータス日本語化
+              let statusText = "出勤";
+              if (shift.status === "absence") statusText = "欠勤";
+              if (shift.status === "paid_leave") statusText = "有給";
+              if (shift.status === "early_leave") statusText = "早退";
+
+              // 金額計算
+              const amount = calculateShiftAmount(shift, job, shifts, dateStr);
+
+              const row = [
+                dateStr,
+                `"${jobName}"`, // カンマ対策でダブルクォート
+                statusText,
+                shift.start || "-",
+                shift.end || "-",
+                shift.breakTime || "0",
+                amount,
+              ];
+              csvContent += row.join(",") + "\n";
+            });
+          }
+        });
+      filename = `shifts_${csvStartDate}_${csvEndDate}.csv`;
+    } else if (csvDataType === "wishlist") {
+      csvContent += bom + "優先度,品名,金額\n";
+      wishlist.forEach((item) => {
+        const row = [item.priority, `"${item.name}"`, item.price];
+        csvContent += row.join(",") + "\n";
+      });
+      filename = `wishlist_${format(new Date(), "yyyyMMdd")}.csv`;
+    }
+
+    // 3. ダウンロード処理
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    setCsvDialogOpen(false);
+  };
+
+  // --- 表示用変数 ---
+  const currentMode = settings.weatherMode || "manual";
+  const currentLocationName = settings.location?.name || "未設定";
+  const sharedCardBg = isDark ? "rgba(255, 255, 255, 0.05)" : "#f0f4ff";
   const maxMembers =
     userProfile?.plan === "family" ? 4 : userProfile?.plan === "couple" ? 2 : 1;
   const currentMemberCount = (sharedDocs?.length || 0) + 1;
 
-  const sharedCardBg = isDark ? "rgba(255, 255, 255, 0.05)" : "#f0f4ff";
-
-  const currentMode = settings.weatherMode || "manual";
-  const currentLocationName = settings.location?.name || "未設定";
+  const getPlanDisplayName = () => {
+    const plan = userProfile?.plan || "free";
+    switch (plan) {
+      case "family":
+        return "ファミリープラン (Premium)";
+      case "couple":
+        return "カップルプラン (Premium)";
+      default:
+        return "無料プラン";
+    }
+  };
 
   return (
-    <Box sx={{ pb: 4 }}>
-      {/* 1. 一括登録 (頻度: 高) */}
+    <Box sx={{ pb: 10 }}>
+      {/* 1. 一括登録 */}
       <Typography variant="h6" gutterBottom>
         📅 シフト一括登録/削除
       </Typography>
@@ -277,7 +449,7 @@ export default function SettingsTab({
         </CardContent>
       </Card>
 
-      {/* 2. 仕事の設定 (頻度: 中) */}
+      {/* 2. 仕事の設定 */}
       <Typography variant="h6" gutterBottom>
         ⚙️ 仕事の設定
       </Typography>
@@ -465,7 +637,7 @@ export default function SettingsTab({
         </CardContent>
       </Card>
 
-      {/* ★ここに移動: 天気予報の地域 */}
+      {/* 5. 天気予報の地域 */}
       <Typography variant="h6" gutterBottom>
         🌤️ 天気予報の地域
       </Typography>
@@ -594,7 +766,7 @@ export default function SettingsTab({
               variant="caption"
               sx={{ mt: 1, display: "block", color: "#00e676" }}
             >
-              Welcome to Unif1 World. 視認性を確保しつつ、没入感を提供します。
+              Welcome to Unif1 World.
             </Typography>
           )}
         </CardContent>
@@ -652,15 +824,79 @@ export default function SettingsTab({
         </CardContent>
       </Card>
 
-      {/* 8. 共有管理 */}
+      {/* 8. データ管理 (Premium) */}
+      {isPremium && (
+        <>
+          <Typography variant="h6" gutterBottom>
+            💾 データ管理 (Premium)
+          </Typography>
+          <Card sx={{ mb: 4, border: "1px solid #ffd700" }}>
+            <CardContent>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ mb: 2, display: "block" }}
+              >
+                バックアップと復元
+              </Typography>
+
+              {/* ボタンエリア: JSONバックアップ / CSV出力 */}
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<CloudDownload />}
+                    onClick={handleBackup}
+                    fullWidth
+                  >
+                    JSON保存
+                  </Button>
+                </Grid>
+                <Grid item xs={6}>
+                  <Button
+                    variant="outlined"
+                    startIcon={<CloudUpload />}
+                    onClick={handleRestoreClick}
+                    color="warning"
+                    fullWidth
+                  >
+                    JSON復元
+                  </Button>
+                </Grid>
+                {/* ★追加: CSV出力ボタン */}
+                <Grid item xs={12}>
+                  <Button
+                    variant="contained"
+                    startIcon={<TableChart />}
+                    onClick={() => setCsvDialogOpen(true)}
+                    color="success"
+                    fullWidth
+                  >
+                    CSVエクスポート (Excel用)
+                  </Button>
+                </Grid>
+              </Grid>
+
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: "none" }}
+                accept=".json"
+                onChange={handleFileChange}
+              />
+            </CardContent>
+          </Card>
+        </>
+      )}
+
+      {/* 9. 共有管理 */}
       {canShareGroup && (
         <>
           <Typography variant="h6" gutterBottom>
-            🔗 共有管理 ({planName})
+            🔗 共有管理 ({getPlanDisplayName()})
           </Typography>
           <Card sx={{ mb: 4, bgcolor: sharedCardBg }}>
             <CardContent>
-              {/* 人数表示 */}
               <Box
                 sx={{
                   display: "flex",
@@ -718,7 +954,6 @@ export default function SettingsTab({
 
               <Divider sx={{ my: 2 }} />
 
-              {/* プライバシー設定 */}
               <Typography variant="subtitle2" gutterBottom>
                 プライバシー設定 (共有するデータ)
               </Typography>
@@ -753,13 +988,7 @@ export default function SettingsTab({
                   label="買い物リストを共有"
                 />
               </Box>
-              <Typography variant="caption" color="error">
-                ※OFFにすると、相手の画面にあなたのデータは表示されません。
-                <br />
-                ※全員OFFにすることが推奨されます（初期設定）。
-              </Typography>
 
-              {/* メンバーリスト */}
               {userProfile?.groupId && (
                 <>
                   <Divider sx={{ my: 2 }} />
@@ -806,6 +1035,157 @@ export default function SettingsTab({
           </Card>
         </>
       )}
+
+      {/* 10. アカウント・契約 */}
+      <Typography variant="h6" gutterBottom>
+        👤 アカウント・契約
+      </Typography>
+      <Card sx={{ mb: 2 }}>
+        <CardContent>
+          <List dense>
+            <ListItem>
+              <ListItemText
+                primary="ステータス"
+                secondary={
+                  user && !user.isAnonymous ? user.email : "未ログイン (ゲスト)"
+                }
+                secondaryTypographyProps={{
+                  color:
+                    user && !user.isAnonymous ? "primary" : "text.secondary",
+                  fontWeight: user && !user.isAnonymous ? "bold" : "normal",
+                }}
+              />
+              <ListItemSecondaryAction>
+                {user && !user.isAnonymous ? (
+                  <Button
+                    size="small"
+                    color="error"
+                    onClick={onLogout}
+                    startIcon={<ExitToApp />}
+                  >
+                    ログアウト
+                  </Button>
+                ) : (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color="primary"
+                    onClick={onLoginRequest}
+                    startIcon={<Login />}
+                  >
+                    ログイン/登録
+                  </Button>
+                )}
+              </ListItemSecondaryAction>
+            </ListItem>
+
+            <Divider component="li" />
+
+            <ListItem>
+              <Box
+                sx={{ display: "flex", alignItems: "center", width: "100%" }}
+              >
+                {isPremium ? (
+                  <Star color="warning" sx={{ mr: 2 }} />
+                ) : (
+                  <CloudOff color="action" sx={{ mr: 2 }} />
+                )}
+                <ListItemText
+                  primary="現在のプラン"
+                  secondary={
+                    <Typography
+                      variant="body2"
+                      fontWeight="bold"
+                      color={isPremium ? "secondary.main" : "text.secondary"}
+                    >
+                      {getPlanDisplayName()}
+                    </Typography>
+                  }
+                />
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<CreditCard />}
+                  onClick={onManagePlan}
+                  sx={{ ml: 2 }}
+                >
+                  プラン変更
+                </Button>
+              </Box>
+            </ListItem>
+          </List>
+
+          {!isPremium && (
+            <Alert severity="warning" sx={{ mt: 2, fontSize: "0.85rem" }}>
+              現在、データは端末内（ブラウザ）にのみ保存されています。
+              <br />
+              <strong>
+                キャッシュの削除や端末の紛失でデータが消える可能性があります。
+              </strong>
+              <br />
+              大切なデータは、Premiumプラン（クラウド保存）への加入をお勧めします。
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ★追加: CSV出力設定ダイアログ */}
+      <Dialog open={csvDialogOpen} onClose={() => setCsvDialogOpen(false)}>
+        <DialogTitle>CSVエクスポート設定</DialogTitle>
+        <DialogContent>
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              mt: 1,
+              minWidth: 300,
+            }}
+          >
+            <FormControl fullWidth>
+              <InputLabel>出力するデータ</InputLabel>
+              <Select
+                value={csvDataType}
+                label="出力するデータ"
+                onChange={(e) => setCsvDataType(e.target.value)}
+              >
+                <MenuItem value="shifts">シフト実績・給与 (Excel用)</MenuItem>
+                <MenuItem value="wishlist">欲しいものリスト</MenuItem>
+              </Select>
+            </FormControl>
+
+            <Typography variant="subtitle2">期間指定</Typography>
+            <Box sx={{ display: "flex", gap: 2 }}>
+              <TextField
+                type="date"
+                label="開始"
+                InputLabelProps={{ shrink: true }}
+                value={csvStartDate}
+                onChange={(e) => setCsvStartDate(e.target.value)}
+                fullWidth
+              />
+              <TextField
+                type="date"
+                label="終了"
+                InputLabelProps={{ shrink: true }}
+                value={csvEndDate}
+                onChange={(e) => setCsvEndDate(e.target.value)}
+                fullWidth
+              />
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCsvDialogOpen(false)}>キャンセル</Button>
+          <Button
+            variant="contained"
+            onClick={handleExportCsv}
+            startIcon={<TableChart />}
+          >
+            ダウンロード
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

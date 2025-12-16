@@ -596,6 +596,33 @@ export default function MainApp() {
     }
   };
 
+  // ログアウト処理
+  const handleLogout = async () => {
+    if (window.confirm("ログアウトしますか？")) {
+      try {
+        await logout();
+        window.location.reload();
+      } catch (error) {
+        console.error("Logout failed", error);
+        alert("ログアウトに失敗しました");
+      }
+    }
+  };
+
+  // ログイン画面への誘導
+  const handleLoginRequest = () => {
+    login();
+  };
+
+  // プラン変更画面への誘導
+  const handleManagePlan = () => {
+    if (userProfile?.stripePortalUrl) {
+      window.location.href = userProfile.stripePortalUrl;
+    } else {
+      alert("プラン変更画面へ移動します（Stripe連携準備中）");
+    }
+  };
+
   const LoginStatus = () => {
     if (currentUser) {
       return (

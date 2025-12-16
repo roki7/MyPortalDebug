@@ -1,4 +1,3 @@
-// src/components/MotivationTab.jsx
 import React, { useState, useEffect } from "react";
 import {
   Box,
@@ -19,10 +18,10 @@ import {
   Collapse,
   useTheme,
   Grid,
-  Select, // ★追加
-  MenuItem, // ★追加
-  FormControl, // ★追加
-  InputLabel, // ★追加
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
 } from "@mui/material";
 import {
   Psychology,
@@ -45,7 +44,7 @@ export default function MotivationTab({
   wishlist = [],
   onAddWishlist,
   onDeleteWishlist,
-  onUpdateWishlist, // ★追加: 更新用関数
+  onUpdateWishlist,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -71,6 +70,10 @@ export default function MotivationTab({
 
   const messageBoxBgColor = isDark ? theme.palette.background.paper : "white";
   const messageTextColor = isDark ? theme.palette.text.primary : "#4e342e";
+
+  // ★修正: 生活費入力欄の背景色と文字色を定義
+  const collapseBgColor = isDark ? "rgba(255, 255, 255, 0.1)" : "#f5f5f5";
+  const collapseTextColor = isDark ? "text.primary" : "text.secondary";
 
   useEffect(() => {
     const today = format(new Date(), "yyyy-MM-dd");
@@ -111,7 +114,6 @@ export default function MotivationTab({
       return;
     }
 
-    // ★チェック: 優先度1位がすでに存在する場合の警告
     if (
       parseInt(newItemPriority) === 1 &&
       wishlist.some((i) => i.priority === 1)
@@ -130,7 +132,7 @@ export default function MotivationTab({
         id: Date.now(),
         name: newItemName,
         price: parseInt(newItemPrice),
-        priority: parseInt(newItemPriority), // 選択された優先度を使用
+        priority: parseInt(newItemPriority),
       });
       setNewItemName("");
       setNewItemPrice("");
@@ -138,9 +140,7 @@ export default function MotivationTab({
     }
   };
 
-  // ★追加: 既存アイテムの優先度変更ハンドラ
   const handleChangeItemPriority = (item, newPriority) => {
-    // 優先度1位に変更しようとした時のチェック
     if (
       parseInt(newPriority) === 1 &&
       wishlist.some((i) => i.priority === 1 && i.id !== item.id)
@@ -204,13 +204,8 @@ export default function MotivationTab({
         }
 
         【制約事項】
-        1. 前回のアドバイス「${previousMessage.substring(
-          0,
-          15
-        )}...」とは違う切り口で話してください。
-        2. 「生活費」はユーザーにとって大事な息抜き資金(食費やおやつ代)です。これを確保した上で、さらに欲しいものが買えるかどうかに言及してください。
-        3. 欲しいものリストがある場合は、優先順位が高いものを具体的に挙げ、「あと少しで〇〇が手に入る！」などと鼓舞してください。
-        4. 60文字程度で、ポジティブかつユーモアを交えて。
+        - ユーザーを励まし、節約や稼ぎへのモチベーションを上げて。
+        - 60文字程度で、ポジティブかつユーモアを交えて。
       `;
 
       const result = await model.generateContent(prompt);
@@ -326,11 +321,18 @@ export default function MotivationTab({
               生活費(食費・酒・タバコ等)を設定
             </Button>
             <Collapse in={showLivingInput}>
-              <Box sx={{ mt: 1, p: 2, bgcolor: "#f5f5f5", borderRadius: 2 }}>
+              <Box
+                sx={{
+                  mt: 1,
+                  p: 2,
+                  bgcolor: collapseBgColor, // ★修正: ダークモード対応色
+                  borderRadius: 2,
+                }}
+              >
                 <Typography
                   variant="caption"
                   display="block"
-                  sx={{ mb: 1, textAlign: "left", color: "black" }}
+                  sx={{ mb: 1, textAlign: "left", color: collapseTextColor }} // ★修正: ダークモード対応色
                 >
                   毎月大体かかる生活費（食事、お酒、おやつ、タバコなど）を入力してください。これを引いた額を「自由なお金」として計算します。
                 </Typography>
@@ -407,7 +409,6 @@ export default function MotivationTab({
                       component="span"
                       sx={{ display: "flex", alignItems: "center" }}
                     >
-                      {/* ★優先度選択プルダウンに変更 */}
                       <Select
                         value={item.priority}
                         onChange={(e) =>
@@ -427,7 +428,7 @@ export default function MotivationTab({
                               : "text.secondary",
                           ".MuiSelect-select": {
                             paddingRight: "16px !important",
-                          }, // 矢印と被らないように
+                          },
                         }}
                       >
                         <MenuItem value={1} sx={{ fontSize: "0.8rem" }}>
@@ -462,7 +463,6 @@ export default function MotivationTab({
 
           {!isLimitReached ? (
             <Grid container spacing={1} alignItems="center">
-              {/* ★レイアウト変更: 名前・金額・優先度・ボタン */}
               <Grid item xs={4}>
                 <TextField
                   label="品名"
@@ -482,7 +482,6 @@ export default function MotivationTab({
                   onChange={(e) => setNewItemPrice(e.target.value)}
                 />
               </Grid>
-              {/* ★優先度選択を追加 */}
               <Grid item xs={3}>
                 <FormControl fullWidth size="small">
                   <InputLabel>優先度</InputLabel>
@@ -607,10 +606,7 @@ export default function MotivationTab({
           </CardContent>
         </Card>
       )}
-      <AdSenseBanner
-        clientId="ca-pub-2913122779764758" // ★あなたのパブリッシャーIDを入れてください
-        slotId="1840701793" // ★広告ユニットIDを入れてください
-      />
+      <AdSenseBanner clientId="ca-pub-2913122779764758" slotId="1840701793" />
     </Box>
   );
 }
