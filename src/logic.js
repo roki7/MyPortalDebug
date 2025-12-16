@@ -423,7 +423,7 @@ export const generateShiftsRange = (startDate, endDate, job, skipHolidays) => {
     const dateStr = format(day, "yyyy-MM-dd");
     shifts[dateStr] = [
       {
-        id: Date.now() + Math.random(),
+        id: crypto.randomUUID(),
         jobId: job.id,
         start: job.defaultStart || "09:00",
         end: job.defaultEnd || "17:00",
@@ -449,7 +449,7 @@ export const generateShiftsForYear = (year, jobs) => {
       if (job.days && job.days.includes(dayIndex)) {
         if (!shifts[dateStr]) shifts[dateStr] = [];
         shifts[dateStr].push({
-          id: Date.now() + Math.random(),
+          id: crypto.randomUUID(),
           jobId: job.id,
           start: job.defaultStart || "09:00",
           end: job.defaultEnd || "17:00",

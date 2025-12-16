@@ -110,27 +110,16 @@ export const loadData = async (user, canSaveCloud = false) => {
   try {
     const privateRef = doc(db, "users", user.uid, "private_data", "main");
     const snap = await getDoc(privateRef);
-    let personalData = null;
 
+    // ▼ 修正箇所: シンプルに「あれば返す、なければローカル」だけにします
     if (snap.exists()) {
-      personalData = snap.data();
+      return { personal: snap.data(), shared: [] };
     } else {
-      // 移行ロジック
-      const oldRef = doc(db, "users", user.uid, "data", "main");
-      const oldSnap = await getDoc(oldRef);
-      if (oldSnap.exists()) {
-        console.log("⚠️ データ移行を実行");
-        personalData = oldSnap.data();
-        await setDoc(privateRef, sanitizeData(personalData));
-      } else {
-        const local = localStorage.getItem(LOCAL_KEY);
-        if (local) {
-          personalData = JSON.parse(local);
-          await setDoc(privateRef, sanitizeData(personalData));
-        }
-      }
+      // クラウドになければローカルを確認
+      const local = localStorage.getItem(LOCAL_KEY);
+      return { personal: local ? JSON.parse(local) : null, shared: [] };
     }
-    return { personal: personalData, shared: [] };
+    // ▲ 修正ここまで
   } catch (error) {
     console.error("読み込みエラー:", error);
     const local = localStorage.getItem(LOCAL_KEY);

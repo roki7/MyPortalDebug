@@ -272,7 +272,7 @@ export default function ShoppingTab({
 
     // 2. 履歴への記録
     const newHistoryItems = checkedItems.map((item) => ({
-      id: Date.now() + Math.random(),
+      id: crypto.randomUUID(),
       name: item.name,
       date: new Date().toISOString(),
       price:

@@ -288,7 +288,7 @@ export default function FinanceTab({
         onAddRecurring(recData);
         const targetDate = setDate(currentDate, recData.day);
         const paymentData = {
-          id: Date.now() + Math.random(),
+          id: crypto.randomUUID(),
           recurringId: recId,
           name: recData.name,
           amount: recData.amount,
