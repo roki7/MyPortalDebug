@@ -1099,25 +1099,16 @@ export default function MainApp() {
               onGenerateRange={handleGenerateRange}
               onDeleteRange={handleDeleteRange}
               onUpdateMembers={setMembers}
-              fullData={{
-                settings,
-                members,
-                jobs,
-                shifts,
-                accounts,
-                recurring,
-                payments,
-                templates,
-                shopping,
-                myLinks,
-                linkCategories,
-                points,
-                wishlist,
-              }}
               onImportData={handleFullImport}
               onEditJobRequest={handleOpenJobEdit}
               onAddJobRequest={handleOpenJobAdd}
               sharedDocs={sharedDocs}
+              shifts={shifts}
+              wishlist={wishlist}
+              onRestoreData={handleFullImport}
+              onLogout={handleLogout}
+              onLoginRequest={handleLoginRequest}
+              onManagePlan={handleManagePlan}
             />
           )}
         </Box>
