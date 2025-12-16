@@ -32,29 +32,31 @@ import { auth, db, googleProvider } from "./firebase";
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
-let hasBootstrapRun = false;
-let redirectResultPromise = null;
+// StrictMode の二重マウント対策（コンポーネント外）
+let didBootstrap = false;
+let redirectPromise = null;
 
 const ensurePersistence = async () => {
   try {
     await setPersistence(auth, browserLocalPersistence);
-  } catch (error) {
+  } catch (e) {
+    // iOS/WebKit などで local が落ちることがあるので fallback
     try {
       await setPersistence(auth, browserSessionPersistence);
-    } catch (fallbackError) {
-      console.warn("[auth] persistence unavailable", fallbackError?.code);
+    } catch (e2) {
+      console.warn("[auth] persistence unavailable:", e2?.code);
     }
   }
 };
 
-const getRedirectResultOnce = async () => {
-  if (!redirectResultPromise) {
-    redirectResultPromise = getRedirectResult(auth).catch((error) => {
-      console.warn("[auth] getRedirectResult error", error?.code);
+const getRedirectOnce = async () => {
+  if (!redirectPromise) {
+    redirectPromise = getRedirectResult(auth).catch((e) => {
+      console.warn("[auth] getRedirectResult error:", e?.code);
       return null;
     });
   }
-  return redirectResultPromise;
+  return redirectPromise;
 };
 
 export const AuthProvider = ({ children }) => {
@@ -63,57 +65,77 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  const pendingInviteRef = useRef(null);
+  // invite は一度だけ読む（将来用）
+  const inviteRef = useRef(null);
   const inviteAppliedRef = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const invite = params.get("invite");
-
-    console.log("[auth] host", window.location.host);
-    console.log("[auth] app name", auth.app.name);
-    console.log("[auth] apiKey", auth.app.options.apiKey);
-    console.log("[auth] authDomain", auth.app.options.authDomain);
-    console.log("[auth] projectId", auth.app.options.projectId);
-
-    if (invite) {
-      pendingInviteRef.current = invite;
-    }
+    if (invite) inviteRef.current = invite;
   }, []);
 
-  useEffect(() => {
-    let unsubscribe = null;
+  const joinGroup = async (uid, groupId) => {
+    const groupRef = doc(db, "groups", groupId);
+    await updateDoc(groupRef, { members: arrayUnion(uid) });
 
-    const handleAuthChange = async (user) => {
+    await updateDoc(doc(db, "users", uid), {
+      groupId,
+      role: "member",
+    });
+
+    // 自分の profile も即反映
+    const authUid = auth.currentUser?.uid ?? currentUser?.uid;
+    if (uid === authUid) {
+      setUserProfile((prev) =>
+        prev ? { ...prev, groupId, role: "member" } : prev
+      );
+    }
+  };
+
+  useEffect(() => {
+    let unsub = null;
+
+    const upsertAndSetProfile = async (user) => {
+      const userRef = doc(db, "users", user.uid);
+      const snap = await getDoc(userRef);
+
+      if (snap.exists()) {
+        setUserProfile(snap.data());
+        return snap.data();
+      }
+
+      const profile = {
+        uid: user.uid,
+        name: user.displayName ?? "",
+        email: user.email ?? "",
+        plan: "free",
+        groupId: null,
+        role: null,
+        createdAt: serverTimestamp(),
+      };
+      await setDoc(userRef, profile);
+      setUserProfile(profile);
+      return profile;
+    };
+
+    const handleAuth = async (user) => {
       setCurrentUser(user);
 
       if (user) {
-        const userRef = doc(db, "users", user.uid);
-        const snap = await getDoc(userRef);
+        await upsertAndSetProfile(user);
 
-        if (snap.exists()) {
-          setUserProfile(snap.data());
-        } else {
-          const profile = {
-            uid: user.uid,
-            name: user.displayName ?? "",
-            email: user.email ?? "",
-            plan: "free",
-            groupId: null,
-            role: null,
-            createdAt: serverTimestamp(),
-          };
-          await setDoc(userRef, profile);
-          setUserProfile(profile);
-        }
-
-        if (pendingInviteRef.current && !inviteAppliedRef.current) {
+        // invite があれば 1回だけ適用
+        if (inviteRef.current && !inviteAppliedRef.current) {
           inviteAppliedRef.current = true;
           try {
-            await joinGroup(user.uid, pendingInviteRef.current);
+            await joinGroup(user.uid, inviteRef.current);
           } finally {
-            pendingInviteRef.current = null;
-            window.history.replaceState({}, document.title, "/app");
+            inviteRef.current = null;
+            // invite パラメータ除去（必要なら）
+            if (window.location.pathname.startsWith("/app")) {
+              window.history.replaceState({}, document.title, "/app");
+            }
           }
         }
       } else {
@@ -126,26 +148,30 @@ export const AuthProvider = ({ children }) => {
     };
 
     const bootstrap = async () => {
-      if (!hasBootstrapRun) {
-        hasBootstrapRun = true;
-        await ensurePersistence();
-        const result = await getRedirectResultOnce();
-        if (result?.user) {
-          await handleAuthChange(result.user);
+      await ensurePersistence();
+
+      // redirect 結果は StrictMode でも 1回だけ拾う
+      if (!didBootstrap) {
+        didBootstrap = true;
+        const r = await getRedirectOnce();
+        if (r?.user) {
+          await handleAuth(r.user);
         }
       }
 
-      unsubscribe = onAuthStateChanged(auth, handleAuthChange);
+      unsub = onAuthStateChanged(auth, handleAuth);
     };
 
     bootstrap();
 
     return () => {
-      if (unsubscribe) unsubscribe();
+      if (unsub) unsub();
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const login = async () => {
+    setIsLoggingIn(true);
+    await ensurePersistence();
     await signInWithRedirect(auth, googleProvider);
   };
 
@@ -174,17 +200,6 @@ export const AuthProvider = ({ children }) => {
     return groupRef.id;
   };
 
-  const joinGroup = async (uid, groupId) => {
-    const groupRef = doc(db, "groups", groupId);
-    await updateDoc(groupRef, { members: arrayUnion(uid) });
-    await updateDoc(doc(db, "users", uid), { groupId, role: "member" });
-    if (uid === currentUser?.uid) {
-      setUserProfile((prev) =>
-        prev ? { ...prev, groupId, role: "member" } : prev
-      );
-    }
-  };
-
   const leaveGroup = async () => {
     if (!currentUser || !userProfile?.groupId) return;
 
@@ -202,6 +217,15 @@ export const AuthProvider = ({ children }) => {
     );
   };
 
+  // ===== 権限判定（MainApp が使ってるのを復活）=====
+  const plan = userProfile?.plan ?? "free";
+  const isGroupMember = !!userProfile?.groupId;
+
+  const canSaveCloud =
+    ["standard", "couple", "family"].includes(plan) || isGroupMember;
+
+  const canShareGroup = ["couple", "family"].includes(plan) || isGroupMember;
+
   const value = useMemo(
     () => ({
       currentUser,
@@ -214,11 +238,21 @@ export const AuthProvider = ({ children }) => {
       joinGroup,
       leaveGroup,
       isOwner: userProfile?.role === "owner",
+      canSaveCloud,
+      canShareGroup,
+      isPremium: canSaveCloud,
     }),
-    [currentUser, userProfile, loading, isLoggingIn]
+    [
+      currentUser,
+      userProfile,
+      loading,
+      isLoggingIn,
+      canSaveCloud,
+      canShareGroup,
+    ]
   );
 
-  if (loading) return null;
+  if (loading) return null; // ← 好きなローディングUIに変えてOK
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
