@@ -10,13 +10,15 @@
       {
         "source": "/sw.js",
         "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      },
+      {
+        "source": "/__/auth/**",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
       }
     ],
     "rewrites": [
-      { "source": "/", "destination": "/index.html" },
-      { "source": "/app", "destination": "/index.html" },
-      { "source": "/app/**", "destination": "/index.html" },
-      { "source": "/terms", "destination": "/index.html" }
+      { "source": "/__/auth/**", "destination": "/__/auth/index.html" },
+      { "source": "**", "destination": "/index.html" }
     ]
   },
   "functions": [
