@@ -1,176 +1,224 @@
 // src/AuthContext.jsx
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
+  browserLocalPersistence,
+  browserSessionPersistence,
+  getRedirectResult,
+  onAuthStateChanged,
+  setPersistence,
+  signInWithRedirect,
+  signOut,
+} from "firebase/auth";
+import {
+  addDoc,
+  arrayRemove,
+  arrayUnion,
+  collection,
   doc,
   getDoc,
+  serverTimestamp,
   setDoc,
   updateDoc,
-  deleteDoc,
-  arrayUnion,
-  arrayRemove,
-  collection,
-  addDoc,
 } from "firebase/firestore";
 import { auth, db, googleProvider } from "./firebase";
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
+
+let hasBootstrapRun = false;
+let redirectResultPromise = null;
+
+const ensurePersistence = async () => {
+  try {
+    await setPersistence(auth, browserLocalPersistence);
+  } catch (error) {
+    try {
+      await setPersistence(auth, browserSessionPersistence);
+    } catch (fallbackError) {
+      console.warn("[auth] persistence unavailable", fallbackError?.code);
+    }
+  }
+};
+
+const getRedirectResultOnce = async () => {
+  if (!redirectResultPromise) {
+    redirectResultPromise = getRedirectResult(auth).catch((error) => {
+      console.warn("[auth] getRedirectResult error", error?.code);
+      return null;
+    });
+  }
+  return redirectResultPromise;
+};
 
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [inviteCode, setInviteCode] = useState(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  const pendingInviteRef = useRef(null);
+  const inviteAppliedRef = useRef(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const invite = params.get("invite");
-    if (invite) setInviteCode(invite);
+
+    console.log("[auth] host", window.location.host);
+    console.log("[auth] app name", auth.app.name);
+    console.log("[auth] apiKey", auth.app.options.apiKey);
+    console.log("[auth] authDomain", auth.app.options.authDomain);
+    console.log("[auth] projectId", auth.app.options.projectId);
+
+    if (invite) {
+      pendingInviteRef.current = invite;
+    }
+  }, []);
+
+  useEffect(() => {
+    let unsubscribe = null;
+
+    const handleAuthChange = async (user) => {
+      setCurrentUser(user);
+
+      if (user) {
+        const userRef = doc(db, "users", user.uid);
+        const snap = await getDoc(userRef);
+
+        if (snap.exists()) {
+          setUserProfile(snap.data());
+        } else {
+          const profile = {
+            uid: user.uid,
+            name: user.displayName ?? "",
+            email: user.email ?? "",
+            plan: "free",
+            groupId: null,
+            role: null,
+            createdAt: serverTimestamp(),
+          };
+          await setDoc(userRef, profile);
+          setUserProfile(profile);
+        }
+
+        if (pendingInviteRef.current && !inviteAppliedRef.current) {
+          inviteAppliedRef.current = true;
+          try {
+            await joinGroup(user.uid, pendingInviteRef.current);
+          } finally {
+            pendingInviteRef.current = null;
+            window.history.replaceState({}, document.title, "/app");
+          }
+        }
+      } else {
+        setUserProfile(null);
+        inviteAppliedRef.current = false;
+      }
+
+      setIsLoggingIn(false);
+      setLoading(false);
+    };
+
+    const bootstrap = async () => {
+      if (!hasBootstrapRun) {
+        hasBootstrapRun = true;
+        await ensurePersistence();
+        const result = await getRedirectResultOnce();
+        if (result?.user) {
+          await handleAuthChange(result.user);
+        }
+      }
+
+      unsubscribe = onAuthStateChanged(auth, handleAuthChange);
+    };
+
+    bootstrap();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   const login = async () => {
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const userRef = doc(db, "users", result.user.uid);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) {
-        await setDoc(userRef, {
-          uid: result.user.uid,
-          name: result.user.displayName,
-          email: result.user.email,
-          plan: "free",
-          groupId: null,
-          createdAt: new Date(),
-        });
-      }
-      if (inviteCode) {
-        await joinGroup(result.user.uid, inviteCode);
-        setInviteCode(null);
-        window.history.replaceState({}, document.title, "/app");
-      }
-    } catch (error) {
-      console.error("Login failed", error);
-    }
+    await signInWithRedirect(auth, googleProvider);
   };
 
-  const logout = () => signOut(auth);
+  const logout = async () => {
+    await signOut(auth);
+  };
 
   const createGroup = async () => {
-    if (!currentUser) return;
+    if (!currentUser) return null;
+
     const groupRef = await addDoc(collection(db, "groups"), {
       ownerId: currentUser.uid,
       members: [currentUser.uid],
-      createdAt: new Date(),
+      createdAt: serverTimestamp(),
     });
-    const groupId = groupRef.id;
+
     await updateDoc(doc(db, "users", currentUser.uid), {
-      groupId: groupId,
+      groupId: groupRef.id,
       role: "owner",
     });
-    setUserProfile((prev) => ({ ...prev, groupId, role: "owner" }));
-    return groupId;
+
+    setUserProfile((prev) =>
+      prev ? { ...prev, groupId: groupRef.id, role: "owner" } : prev
+    );
+
+    return groupRef.id;
   };
 
   const joinGroup = async (uid, groupId) => {
     const groupRef = doc(db, "groups", groupId);
-    const groupSnap = await getDoc(groupRef);
-    if (groupSnap.exists()) {
-      await updateDoc(groupRef, { members: arrayUnion(uid) });
-      await updateDoc(doc(db, "users", uid), {
-        groupId: groupId,
-        role: "member",
-      });
-      alert("グループに参加しました！");
-      // ステートも即座に更新
-      setUserProfile((prev) => ({ ...prev, groupId, role: "member" }));
-    } else {
-      alert("無効な招待リンクです。");
+    await updateDoc(groupRef, { members: arrayUnion(uid) });
+    await updateDoc(doc(db, "users", uid), { groupId, role: "member" });
+    if (uid === currentUser?.uid) {
+      setUserProfile((prev) =>
+        prev ? { ...prev, groupId, role: "member" } : prev
+      );
     }
-  };
-
-  const kickMember = async (targetUid) => {
-    if (!userProfile?.groupId || userProfile.role !== "owner") return;
-    if (!window.confirm("削除しますか？")) return;
-
-    const groupRef = doc(db, "groups", userProfile.groupId);
-
-    await updateDoc(groupRef, { members: arrayRemove(targetUid) });
-    await updateDoc(doc(db, "users", targetUid), {
-      groupId: null,
-      kickedFrom: userProfile.groupId,
-      kickedAt: new Date(),
-    });
-    await deleteDoc(
-      doc(db, "groups", userProfile.groupId, "shared_data", targetUid)
-    );
-
-    alert("削除しました");
   };
 
   const leaveGroup = async () => {
-    if (!userProfile?.groupId) return;
-    if (window.confirm("退会しますか？")) {
-      const groupRef = doc(db, "groups", userProfile.groupId);
+    if (!currentUser || !userProfile?.groupId) return;
 
-      await updateDoc(groupRef, { members: arrayRemove(currentUser.uid) });
-      await updateDoc(doc(db, "users", currentUser.uid), {
-        groupId: null,
-        role: null,
-      });
-      await deleteDoc(
-        doc(db, "groups", userProfile.groupId, "shared_data", currentUser.uid)
-      );
+    const groupId = userProfile.groupId;
+    const groupRef = doc(db, "groups", groupId);
 
-      setUserProfile((prev) => ({ ...prev, groupId: null, role: null }));
-      window.location.reload();
-    }
-  };
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-      if (user) {
-        const docRef = doc(db, "users", user.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) setUserProfile(docSnap.data());
-      } else {
-        setUserProfile(null);
-      }
-      setLoading(false);
+    await updateDoc(groupRef, { members: arrayRemove(currentUser.uid) });
+    await updateDoc(doc(db, "users", currentUser.uid), {
+      groupId: null,
+      role: null,
     });
-    return unsubscribe;
-  }, []);
 
-  // ★修正: 権限ロジック
-  const plan = userProfile?.plan || "free";
-  const isGroupMember = !!userProfile?.groupId; // グループに参加しているかどうか
-
-  // クラウド保存: 有料プラン契約者 OR グループ参加者
-  const canSaveCloud =
-    ["standard", "couple", "family"].includes(plan) || isGroupMember;
-
-  // 共有機能: カップル・ファミリー契約者 OR グループ参加者
-  const canShareGroup = ["couple", "family"].includes(plan) || isGroupMember;
-
-  const value = {
-    currentUser,
-    userProfile,
-    login,
-    logout,
-    createGroup,
-    joinGroup,
-    kickMember,
-    leaveGroup,
-    isOwner: userProfile?.role === "owner",
-    canSaveCloud,
-    canShareGroup,
-    isPremium: canSaveCloud,
+    setUserProfile((prev) =>
+      prev ? { ...prev, groupId: null, role: null } : prev
+    );
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({
+      currentUser,
+      userProfile,
+      loading,
+      isLoggingIn,
+      login,
+      logout,
+      createGroup,
+      joinGroup,
+      leaveGroup,
+      isOwner: userProfile?.role === "owner",
+    }),
+    [currentUser, userProfile, loading, isLoggingIn]
   );
+
+  if (loading) return null;
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

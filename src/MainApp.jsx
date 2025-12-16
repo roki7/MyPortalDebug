@@ -46,8 +46,11 @@ import {
   Apps,
   Groups,
   Person,
+  CardGiftcard,
+  ExpandMore,
+  ExpandLess,
 } from "@mui/icons-material";
-import { format, addMonths, subMonths, parse } from "date-fns";
+import { format, addMonths, subMonths } from "date-fns";
 import ShiftEditModal from "./components/ShiftEditModal";
 import JobEditDialog from "./components/JobEditDialog";
 import {
@@ -73,7 +76,6 @@ import {
   calculateCurrentEarnings,
   getDisplayLabel,
   filterShiftsForUser,
-  getAnnualMonthlyIncome,
 } from "./logic";
 
 import { saveData, loadData, subscribeToSharedData } from "./storage";
@@ -90,15 +92,20 @@ import ShoppingTab from "./components/ShoppingTab";
 import ReportTab from "./components/ReportTab";
 import ReloadPrompt from "./components/ReloadPrompt";
 import MyLinksTab from "./components/MyLinksTab";
+import PointTab from "./components/PointTab";
+
+import AnalogClock from "./components/AnalogClock";
 
 export default function MainApp() {
   const {
     currentUser,
     userProfile,
     login,
+    isLoggingIn,
     logout,
     canSaveCloud,
     canShareGroup,
+    isPremium,
   } = useAuth();
 
   const [isLoaded, setIsLoaded] = useState(false);
@@ -109,6 +116,8 @@ export default function MainApp() {
 
   const [jobDialogOpen, setJobDialogOpen] = useState(false);
   const [editingJob, setEditingJob] = useState(null);
+
+  const [expandedHeader, setExpandedHeader] = useState(true);
 
   const [settings, setSettings] = useState(INITIAL_SETTINGS);
   const [members, setMembers] = useState(INITIAL_MEMBERS);
@@ -121,6 +130,8 @@ export default function MainApp() {
   const [shopping, setShopping] = useState(INITIAL_SHOPPING);
   const [myLinks, setMyLinks] = useState(INITIAL_MY_LINKS);
   const [linkCategories, setLinkCategories] = useState(LINK_CATEGORIES);
+
+  const [points, setPoints] = useState(0);
   const [wishlist, setWishlist] = useState([]);
 
   const [sharedDocs, setSharedDocs] = useState([]);
@@ -139,7 +150,6 @@ export default function MainApp() {
     household: 0,
   });
   const [annualSummary, setAnnualSummary] = useState([]);
-  const [monthlyIncomeData, setMonthlyIncomeData] = useState([]);
   const [weatherData, setWeatherData] = useState({});
   const [openMenu, setOpenMenu] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -150,29 +160,75 @@ export default function MainApp() {
   const [realtimeLabel, setRealtimeLabel] = useState("");
   const [now, setNow] = useState(new Date());
 
-  // テーマ設定の取得
   const currentThemeMode = settings.theme || "light";
   const currentTheme = themeMap[currentThemeMode];
-  // ★追加: ネオンモード判定
   const isNeon = currentThemeMode === "neon";
 
+  // データ読み込みとマージのロジック
   useEffect(() => {
     const init = async () => {
       try {
+        // 1. まずローカルの最新状態を取得（ログアウト中に編集したデータ）
+        const localRaw = localStorage.getItem("shift_app_v1");
+        const localData = localRaw ? JSON.parse(localRaw) : {};
+
+        // 2. クラウドからデータを取得
         const data = await loadData(currentUser, canSaveCloud);
         const d = data?.personal || {};
-        setSettings(d.settings || INITIAL_SETTINGS);
-        setWishlist(d.wishlist || []);
-        setMembers(d.members || INITIAL_MEMBERS);
-        setJobs(d.jobs || INITIAL_JOBS);
-        setShifts(d.shifts || {});
-        setAccounts(d.accounts || INITIAL_ACCOUNTS);
-        setRecurring(d.recurring || INITIAL_RECURRING);
-        setPayments(d.payments || []);
-        setTemplates(d.templates || INITIAL_PAYMENT_TEMPLATES);
-        setShopping(d.shopping || INITIAL_SHOPPING);
-        if (d.myLinks) setMyLinks(d.myLinks);
-        if (d.linkCategories) setLinkCategories(d.linkCategories);
+
+        // 3. マージ用ヘルパー関数（IDベースで重複除外）
+        const mergeArrays = (cloudArr, localArr) => {
+          if (!cloudArr && !localArr) return [];
+          if (!cloudArr) return localArr || []; // クラウドになければローカルを採用
+          if (!localArr) return cloudArr;
+
+          const cloudIds = new Set(cloudArr.map((i) => i.id));
+          const merged = [...cloudArr];
+
+          // ローカルにあってクラウドにないもの（新規追加分）を追加
+          localArr.forEach((item) => {
+            if (!cloudIds.has(item.id)) {
+              merged.push(item);
+            }
+          });
+          return merged;
+        };
+
+        // 4. ステートにセット（クラウド優先だが、クラウドが空ならローカルを使う）
+        setSettings(d.settings || localData.settings || INITIAL_SETTINGS);
+        setMembers(d.members || localData.members || INITIAL_MEMBERS);
+        setJobs(d.jobs || localData.jobs || INITIAL_JOBS);
+        setShifts(d.shifts || localData.shifts || {});
+        setAccounts(d.accounts || localData.accounts || INITIAL_ACCOUNTS);
+        setRecurring(d.recurring || localData.recurring || INITIAL_RECURRING);
+        setPayments(d.payments || localData.payments || []);
+        setTemplates(
+          d.templates || localData.templates || INITIAL_PAYMENT_TEMPLATES
+        );
+        setShopping(d.shopping || localData.shopping || INITIAL_SHOPPING);
+
+        // 配列データはマージする（これでログアウト中の追加分が復活します）
+        const mergedMyLinks = mergeArrays(d.myLinks, localData.myLinks);
+        // マージ結果が空の場合はINITIAL_MY_LINKSを使用
+        setMyLinks(mergedMyLinks.length > 0 ? mergedMyLinks : INITIAL_MY_LINKS);
+
+        const mergedWishlist = mergeArrays(d.wishlist, localData.wishlist);
+        setWishlist(mergedWishlist);
+
+        // カテゴリは設定系なのでクラウド優先
+        setLinkCategories(
+          d.linkCategories || localData.linkCategories || LINK_CATEGORIES
+        );
+
+        // ポイントは大きい方を採用、またはクラウドが未定義ならローカル
+        const cloudPoints = d.points;
+        const localPoints = localData.points || 0;
+        if (cloudPoints !== undefined && cloudPoints !== null) {
+          setPoints(cloudPoints);
+        } else {
+          setPoints(localPoints);
+        }
+
         setIsLoaded(true);
         if (userProfile?.kickedFrom) setKickDialog(true);
       } catch (e) {
@@ -209,6 +265,7 @@ export default function MainApp() {
           shopping,
           myLinks,
           linkCategories,
+          points,
           wishlist,
         },
         userProfile?.groupId,
@@ -228,21 +285,13 @@ export default function MainApp() {
     shopping,
     myLinks,
     linkCategories,
+    points,
+    wishlist,
     currentUser,
     isLoaded,
     userProfile,
     canSaveCloud,
-    wishlist,
   ]);
-
-  const handleAddWishlist = (item) => {
-    // 追加ロジックはMotivationTab側で制限をかけるが、念のためここでも
-    setWishlist((prev) => [...prev, item]);
-  };
-
-  const handleDeleteWishlist = (id) => {
-    setWishlist((prev) => prev.filter((i) => i.id !== id));
-  };
 
   const fullMergedData = useMemo(() => {
     return mergeSharedData({ uid: currentUser?.uid, shifts, jobs }, sharedDocs);
@@ -329,17 +378,7 @@ export default function MainApp() {
       currentDate
     );
     setAnnualSummary(summary);
-    const targetShifts = isHousehold
-      ? calculationShifts
-      : filterShiftsForUser(calculationShifts, calculationJobs, "me");
-
-    const monthlyData = getAnnualMonthlyIncome(
-      targetShifts,
-      calculationJobs,
-      currentDate
-    );
-    setMonthlyIncomeData(monthlyData);
-  }, [calculationShifts, calculationJobs, currentDate, settings, isHousehold]);
+  }, [calculationShifts, calculationJobs, currentDate, settings]);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 30000);
@@ -367,6 +406,9 @@ export default function MainApp() {
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
 
+  // ヘッダー展開トグル関数
+  const handleToggleHeader = () => setExpandedHeader((prev) => !prev);
+
   const handleOpenJobAdd = () => {
     setEditingJob(null);
     setJobDialogOpen(true);
@@ -379,7 +421,6 @@ export default function MainApp() {
     if (jobData.id) handleUpdateJob(jobData);
     else handleAddJob({ ...jobData, id: Date.now() });
   };
-
   const handleUpdateShiftFull = (updatedShift) => {
     if (!selectedDate) return;
     const dateStr = format(selectedDate, "yyyy-MM-dd");
@@ -391,13 +432,16 @@ export default function MainApp() {
     });
     setEditShift(null);
   };
+
   const handleAddJob = (job) => setJobs([...jobs, job]);
   const handleUpdateJob = (updatedJob) =>
     setJobs(jobs.map((j) => (j.id === updatedJob.id ? updatedJob : j)));
   const handleDeleteJob = (id) => setJobs(jobs.filter((j) => j.id !== id));
+
   const handleAddAccount = (acc) => setAccounts([...accounts, acc]);
   const handleUpdateAccount = (updatedAcc) =>
     setAccounts(accounts.map((a) => (a.id === updatedAcc.id ? updatedAcc : a)));
+
   const handleAddMyLink = (link) => setMyLinks([...myLinks, link]);
   const handleUpdateMyLink = (updatedLink) =>
     setMyLinks(
@@ -405,6 +449,7 @@ export default function MainApp() {
     );
   const handleDeleteMyLink = (id) =>
     setMyLinks(myLinks.filter((a) => a.id !== id));
+
   const handleAddCategory = (cat) =>
     setLinkCategories([...linkCategories, cat]);
   const handleDeleteCategory = (id) =>
@@ -413,6 +458,7 @@ export default function MainApp() {
     setLinkCategories(
       linkCategories.map((c) => (c.id === id ? { ...c, name: newName } : c))
     );
+
   const handleAddRecurring = (rec) => setRecurring([...recurring, rec]);
   const handleUpdateRecurring = (updatedRec) =>
     setRecurring(
@@ -420,10 +466,12 @@ export default function MainApp() {
     );
   const handleDeleteRecurring = (id) =>
     setRecurring(recurring.filter((r) => r.id !== id));
+
   const handleAddTemplate = (name) =>
     setTemplates([...templates, { id: Date.now(), name, accountId: null }]);
   const handleDeleteTemplate = (id) =>
     setTemplates(templates.filter((t) => t.id !== id));
+
   const handleAddPayment = (payment) =>
     setPayments([
       ...payments,
@@ -438,9 +486,20 @@ export default function MainApp() {
     ]);
   const handleUpdatePayment = (updatedPay) =>
     setPayments(payments.map((p) => (p.id === updatedPay.id ? updatedPay : p)));
-  const handleUpdateStock = (newStockList) => {
+
+  const handleUpdateStock = (newStockList) =>
     setShopping({ ...shopping, stock: newStockList });
+
+  const handleAddPoints = (amount) => setPoints((prev) => prev + amount);
+  const handleAddWishlist = (item) => setWishlist((prev) => [...prev, item]);
+  const handleDeleteWishlist = (id) =>
+    setWishlist((prev) => prev.filter((i) => i.id !== id));
+  const handleUpdateWishlist = (updatedItem) => {
+    setWishlist((prev) =>
+      prev.map((item) => (item.id === updatedItem.id ? updatedItem : item))
+    );
   };
+
   const handleGenerateAnnualShifts = (year) => {
     if (jobs.length === 0) {
       alert("仕事を登録してください");
@@ -530,12 +589,15 @@ export default function MainApp() {
       setShopping(importedData.shopping || shopping);
       setMyLinks(importedData.myLinks || myLinks);
       setLinkCategories(importedData.linkCategories || linkCategories);
+      setPoints(importedData.points || 0);
+      setWishlist(importedData.wishlist || []);
+
       alert("復元しました");
     }
   };
 
   const LoginStatus = () => {
-    if (currentUser)
+    if (currentUser) {
       return (
         <IconButton
           onClick={() => {
@@ -549,16 +611,22 @@ export default function MainApp() {
           />
         </IconButton>
       );
+    }
+
     return (
       <Button
-        onClick={login}
+        onClick={() => {
+          console.log("[UI] login clicked");
+          login();
+        }}
+        disabled={isLoggingIn}
         size="small"
         variant="contained"
         color="secondary"
         startIcon={<Login />}
         sx={{ fontSize: 10 }}
       >
-        ログイン
+        {isLoggingIn ? "ログイン中..." : "ログイン"}
       </Button>
     );
   };
@@ -569,9 +637,13 @@ export default function MainApp() {
     { icon: <ShoppingCart />, label: "買い物" },
     { icon: <Apps />, label: "MyLinks" },
   ];
+
   const moreTabs = [
     { icon: <Assessment />, label: "分析", index: 4 },
     { icon: <EmojiEvents />, label: "モチベ", index: 5 },
+    ...(isPremium
+      ? [{ icon: <CardGiftcard />, label: "ポイ活", index: 7 }]
+      : []),
     { icon: <Settings />, label: "設定", index: 6 },
   ];
 
@@ -658,18 +730,58 @@ export default function MainApp() {
           <Box
             sx={{
               display: "flex",
-              justifyContent: "space-between",
               alignItems: "center",
               mb: 1,
             }}
           >
-            <IconButton onClick={handlePrevMonth} size="small">
-              <ArrowBack sx={{ color: "text.primary" }} />
-            </IconButton>
-            <Typography variant="h6" sx={{ fontWeight: "bold" }}>
-              {format(currentDate, "yyyy年 M月")}
-            </Typography>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            {/* 1. Prev Button - 左端 */}
+            <Box
+              sx={{
+                flexGrow: 1,
+                display: "flex",
+                justifyContent: "flex-start",
+                minWidth: "auto",
+              }}
+            >
+              <IconButton onClick={handlePrevMonth} size="small">
+                <ArrowBack sx={{ color: "text.primary" }} />
+              </IconButton>
+            </Box>
+
+            {/* 2. 年月表示 - 中央に配置 */}
+            <Box
+              sx={{
+                flexShrink: 0, // 縮まない
+                cursor: "pointer",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+              onClick={handleToggleHeader} // クリックで展開をトグル
+            >
+              <Typography
+                variant="h6"
+                sx={{ fontWeight: "bold", whiteSpace: "nowrap" }}
+              >
+                {format(currentDate, "yyyy年 M月")}
+              </Typography>
+              <IconButton size="small" sx={{ color: "text.primary", ml: 0.5 }}>
+                {expandedHeader ? <ExpandLess /> : <ExpandMore />}{" "}
+                {/* アイコン切り替え */}
+              </IconButton>
+            </Box>
+
+            {/* 3. Right Icons - 右端 */}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                flexGrow: 1,
+                justifyContent: "flex-end",
+                minWidth: "auto",
+              }}
+            >
               <Chip
                 icon={
                   canSaveCloud ? (
@@ -697,87 +809,127 @@ export default function MainApp() {
             </Box>
           </Box>
 
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-              mb: 0,
-            }}
-          >
-            <Box sx={{ display: "flex", flexDirection: "column" }}>
-              <Typography variant="caption">
-                📅 出勤: {earnings.workDays}日
-              </Typography>
-              <Typography variant="caption">
-                💰 {isHousehold ? "世帯" : "個人"}年収: ¥
-                {currentAnnualIncome.toLocaleString()}
-              </Typography>
-            </Box>
-
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={isHousehold}
-                  onChange={(e) => setIsHousehold(e.target.checked)}
-                  size="small"
-                  color="warning"
-                />
-              }
-              label={
-                <Typography variant="caption" sx={{ color: "text.primary" }}>
-                  世帯合算
-                </Typography>
-              }
-              sx={{ mr: 0 }}
-            />
-          </Box>
-
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "flex-end",
-              mt: 1,
-            }}
-          >
+          {/* expandedHeaderがtrueの場合にのみ表示するアコーディオンエリア */}
+          {expandedHeader && (
             <Box>
-              <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                {realtimeLabel}
-              </Typography>
-              <Typography variant="h4" fontWeight="bold">
-                ¥{currentRealtimeEarnings.toLocaleString()}
-              </Typography>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  mt: 1,
+                }}
+              >
+                {/* 左側: 日数・年収 */}
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    minWidth: "30%",
+                    mr: 1,
+                  }}
+                >
+                  <Typography variant="caption">
+                    📅 出勤: {earnings.workDays}日
+                  </Typography>
+                  <Typography variant="caption">
+                    💰 {isHousehold ? "世帯" : "個人"}年収: ¥
+                    {currentAnnualIncome.toLocaleString()}
+                  </Typography>
+                </Box>
+
+                {/* 右側: 世帯合算スイッチ */}
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={isHousehold}
+                      onChange={(e) => setIsHousehold(e.target.checked)}
+                      size="small"
+                      color="warning"
+                    />
+                  }
+                  label={
+                    <Typography
+                      variant="caption"
+                      sx={{ color: "text.primary" }}
+                    >
+                      世帯合算
+                    </Typography>
+                  }
+                  sx={{
+                    mr: 0,
+                    minWidth: "30%",
+                    justifyContent: "flex-end",
+                    ml: 1,
+                  }} // 右寄せに調整
+                />
+              </Box>
+
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center", // 中央寄せ
+                  mt: 1,
+                }}
+              >
+                <Box>
+                  <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                    {realtimeLabel}
+                  </Typography>
+                  {/* ★修正: リアルタイム収支 (確定) の金額を h6 に統一 */}
+                  <Typography variant="h6" fontWeight="bold">
+                    ¥{currentRealtimeEarnings.toLocaleString()}
+                  </Typography>
+                </Box>
+
+                {/* アナログ時計 */}
+                <Box
+                  sx={{
+                    flexShrink: 0,
+                    width: 100,
+                    height: 100,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: "50%",
+                  }}
+                >
+                  <AnalogClock currentTheme={currentTheme} isNeon={isNeon} />
+                </Box>
+
+                <Box sx={{ textAlign: "right" }}>
+                  <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                    着地見込み
+                  </Typography>
+                  {/* 着地見込みの金額は元から h6 */}
+                  <Typography variant="h6">
+                    ¥{currentProjected?.toLocaleString() || 0}
+                  </Typography>
+                </Box>
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={
+                  currentProjected > 0
+                    ? (currentRealtimeEarnings / currentProjected) * 100
+                    : 0
+                }
+                sx={{
+                  mt: 1,
+                  height: 6,
+                  borderRadius: 3,
+                  bgcolor: "rgba(128,128,128,0.2)",
+                  "& .MuiLinearProgress-bar": {
+                    background: isNeon
+                      ? "linear-gradient(90deg, #00F5FF, #6A00FF)"
+                      : "#00e676",
+                  },
+                }}
+              />
             </Box>
-            <Box sx={{ textAlign: "right" }}>
-              <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                着地見込み
-              </Typography>
-              <Typography variant="h6">
-                ¥{currentProjected?.toLocaleString() || 0}
-              </Typography>
-            </Box>
-          </Box>
-          <LinearProgress
-            variant="determinate"
-            value={
-              currentProjected > 0
-                ? (currentRealtimeEarnings / currentProjected) * 100
-                : 0
-            }
-            sx={{
-              mt: 1,
-              height: 6,
-              borderRadius: 3,
-              bgcolor: "rgba(128,128,128,0.2)",
-              "& .MuiLinearProgress-bar": {
-                // ★修正: ネオンモード時はグラデーション
-                background: isNeon
-                  ? "linear-gradient(90deg, #00F5FF, #6A00FF)"
-                  : "#00e676",
-              },
-            }}
-          />
+          )}
+          {/* アコーディオンエリア終了 */}
         </Paper>
 
         <Box sx={{ p: 2 }}>
@@ -804,8 +956,11 @@ export default function MainApp() {
                 }
                 setEditShift({ ...s, breakTime: initBreak });
               }}
+              onPrevMonth={handlePrevMonth}
+              onNextMonth={handleNextMonth}
             />
           )}
+
           {tabIndex === 1 && (
             <FinanceTab
               accounts={accounts}
@@ -843,6 +998,7 @@ export default function MainApp() {
               onNextMonth={handleNextMonth}
             />
           )}
+
           {tabIndex === 2 && (
             <ShoppingTab
               shopping={shopping}
@@ -850,6 +1006,9 @@ export default function MainApp() {
               onUpdateStock={handleUpdateStock}
               onAddPayment={handleAddPayment}
               accounts={accounts}
+              currentDate={currentDate}
+              onPrevMonth={handlePrevMonth}
+              onNextMonth={handleNextMonth}
             />
           )}
           {tabIndex === 3 && (
@@ -871,19 +1030,32 @@ export default function MainApp() {
               targetLimit={settings.targetLimit}
               accounts={accounts}
               totalFixedCost={totalFixedCost}
-              monthlyIncomeData={monthlyIncomeData}
             />
           )}
+
           {tabIndex === 5 && (
             <MotivationTab
-              currentEarnings={earnings.personalFixed}
+              currentEarnings={
+                isHousehold
+                  ? earnings.householdProjected
+                  : earnings.personalProjected
+              }
               fixedCost={totalFixedCost}
-              settings={settings} // ★追加: 生活費設定のため
-              onUpdateSettings={setSettings} // ★追加: 生活費保存のため
-              isPremium={true} // ★仮でtrue（ここをfalseにすると制限動作を確認できます）
-              wishlist={wishlist} // ★追加
-              onAddWishlist={handleAddWishlist} // ★追加
-              onDeleteWishlist={handleDeleteWishlist} // ★追加
+              settings={settings}
+              onUpdateSettings={setSettings}
+              isPremium={isPremium}
+              wishlist={wishlist}
+              onAddWishlist={handleAddWishlist}
+              onDeleteWishlist={handleDeleteWishlist}
+              onUpdateWishlist={handleUpdateWishlist}
+            />
+          )}
+
+          {tabIndex === 7 && (
+            <PointTab
+              points={points}
+              onAddPoints={handleAddPoints}
+              isPremium={isPremium}
             />
           )}
 
@@ -912,6 +1084,8 @@ export default function MainApp() {
                 shopping,
                 myLinks,
                 linkCategories,
+                points,
+                wishlist,
               }}
               onImportData={handleFullImport}
               onEditJobRequest={handleOpenJobEdit}
@@ -951,14 +1125,12 @@ export default function MainApp() {
         </Paper>
 
         <Fab
-          // ★修正: ネオンモード時はprimaryカラー(シアン)をベースにする
           color={isNeon ? "primary" : "secondary"}
           sx={{
             position: "fixed",
             bottom: "calc(120px + env(safe-area-inset-bottom))",
             right: 16,
             zIndex: 100,
-            // ★修正: ネオンモード時はグラデーション背景
             background: isNeon
               ? "linear-gradient(90deg, #00F5FF, #6A00FF)"
               : undefined,

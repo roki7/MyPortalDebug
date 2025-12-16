@@ -1,6 +1,6 @@
 {
   "projects": {
-    "default": "myportal-7b33f",
+    "default": "myportalone-dev",
     "dev": "myportalone-dev",
     "prod": "myportal-7b33f"
   },

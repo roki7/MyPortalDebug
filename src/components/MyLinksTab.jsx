@@ -36,6 +36,7 @@ import {
   Settings,
   Link as LinkIcon,
 } from "@mui/icons-material";
+import AdSenseBanner from "./AdSenseBanner";
 
 export default function MyLinksTab({
   myLinks,
@@ -192,7 +193,7 @@ export default function MyLinksTab({
   const inputBgColor = isDark ? "rgba(255, 255, 255, 0.05)" : "white";
 
   return (
-    <Box sx={{ pb: 10 }}>
+    <Box sx={{ pb: 15 }}>
       {/* 検索バー */}
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1 }}>
         <TextField
@@ -478,6 +479,10 @@ export default function MyLinksTab({
           削除
         </MenuItem>
       </Menu>
+      <AdSenseBanner
+        clientId="ca-pub-2913122779764758" // ★あなたのパブリッシャーIDを入れてください
+        slotId="7308650894" // ★広告ユニットIDを入れてください
+      />
     </Box>
   );
 }
