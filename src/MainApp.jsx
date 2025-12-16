@@ -93,7 +93,7 @@ import ReportTab from "./components/ReportTab";
 import ReloadPrompt from "./components/ReloadPrompt";
 import MyLinksTab from "./components/MyLinksTab";
 import PointTab from "./components/PointTab";
-
+import { getFunctions, httpsCallable } from "firebase/functions";
 import AnalogClock from "./components/AnalogClock";
 
 export default function MainApp() {
@@ -403,6 +403,34 @@ export default function MainApp() {
     setRealtimeLabel(label);
   }, [fullMergedData, currentDate, now, settings, isHousehold]);
 
+  const handleManagePlan = async () => {
+    // すでにプレミアムならカスタマーポータルへ（未実装ならアラート）
+    if (isPremium) {
+      // 本来は createPortalSession という関数も作って呼び出します
+      alert("解約・カード変更用のポータル機能はこれから実装します！");
+      return;
+    }
+
+    // 未加入ならチェックアウトへ誘導
+    try {
+      const functions = getFunctions(undefined, "asia-northeast1");
+
+      const createSession = httpsCallable(functions, "createCheckoutSession");
+
+      // ローディング表示などがあると親切
+      const { data } = await createSession({
+        origin: window.location.origin, // 戻り先URL用
+      });
+
+      if (data.url) {
+        window.location.href = data.url; // Stripe決済画面へジャンプ
+      }
+    } catch (error) {
+      console.error("決済セッション作成エラー", error);
+      alert("決済画面への移動に失敗しました");
+    }
+  };
+
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
 
@@ -612,15 +640,6 @@ export default function MainApp() {
   // ログイン画面への誘導
   const handleLoginRequest = () => {
     login();
-  };
-
-  // プラン変更画面への誘導
-  const handleManagePlan = () => {
-    if (userProfile?.stripePortalUrl) {
-      window.location.href = userProfile.stripePortalUrl;
-    } else {
-      alert("プラン変更画面へ移動します（Stripe連携準備中）");
-    }
   };
 
   const LoginStatus = () => {

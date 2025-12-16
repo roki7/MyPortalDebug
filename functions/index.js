@@ -1,23 +1,115 @@
-// functions/index.js
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { setGlobalOptions } = require("firebase-functions/v2/options");
+const { onCall, onRequest } = require("firebase-functions/v2/https"); // v2系のhttpsを使う
+const functions = require("firebase-functions"); // v1系もエラー用に残す
 const admin = require("firebase-admin");
 const axios = require("axios");
 const { getAllPoints } = require("./weatherPoints");
 
-// 初期化
-admin.initializeApp();
+// --- 1. 初期化 ---
+if (admin.apps.length === 0) {
+  admin.initializeApp();
+}
 const db = admin.firestore();
 
-// 東京リージョンに固定（重要：これをしないと米国サーバーになり遅延します）
+// ★重要: ここですべての関数を東京リージョンに設定します
 setGlobalOptions({ region: "asia-northeast1" });
 
-// 1時間ごとの定期実行関数 (Gen 2 syntax)
+// --- 2. Stripe設定 ---
+// ★ここにシークレットキーを入れてください
+const stripe = require("stripe")("sk_test_あなたのシークレットキー");
+
+// --- 3. Stripe: チェックアウトセッション作成 (v2) ---
+exports.createCheckoutSession = onCall(async (request) => {
+  // v2では request.auth, request.data でアクセスします
+  if (!request.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "ログインが必要です"
+    );
+  }
+
+  const uid = request.auth.uid;
+  const email = request.auth.token.email;
+  const data = request.data;
+
+  // ★ここに作成した商品のPrice IDを入れてください
+  const priceId = "price_あなたのプライスID";
+
+  try {
+    // 顧客作成
+    const customer = await stripe.customers.create({
+      email: email,
+      metadata: { firebaseUid: uid },
+    });
+
+    // セッション作成
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "subscription",
+      customer: customer.id,
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      success_url: `${data.origin}/?payment=success`,
+      cancel_url: `${data.origin}/?payment=cancel`,
+      metadata: { firebaseUid: uid },
+    });
+
+    return { url: session.url };
+  } catch (error) {
+    console.error("Stripe Error:", error);
+    throw new functions.https.HttpsError("internal", error.message);
+  }
+});
+
+// --- 4. Stripe: Webhook (v2) ---
+exports.stripeWebhook = onRequest(async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+
+  // ★ここにWebhook署名シークレットを入れてください
+  const endpointSecret = whsec_JDy8aJhAuq5pqe7UJvOvTZE10uxzsjXL;
+
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(req.rawBody, sig, endpointSecret);
+  } catch (err) {
+    console.error(`Webhook Error: ${err.message}`);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // イベント処理
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+    const uid = session.metadata.firebaseUid;
+
+    if (uid) {
+      console.log(`Payment success for UID: ${uid}`);
+      await db.collection("users").doc(uid).set(
+        {
+          isPremium: true,
+          stripeCustomerId: session.customer,
+          subscriptionId: session.subscription,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+  }
+
+  res.json({ received: true });
+});
+
+// --- 5. 天気キャッシュ更新 (定期実行) ---
 exports.updateWeatherCache = onSchedule(
   {
     schedule: "every 60 minutes",
-    timeoutSeconds: 540, // 9分（最大値）
-    memory: "1GiB", // ★注意: Gen2では "1GB" ではなく "1GiB" と書きます
+    timeoutSeconds: 540,
+    memory: "1GiB",
   },
   async (event) => {
     const points = getAllPoints();
@@ -25,8 +117,6 @@ exports.updateWeatherCache = onSchedule(
 
     const batch = db.batch();
     const weatherCollection = db.collection("weather_cache");
-
-    // 並列処理の塊（チャンク）サイズ
     const chunkSize = 5;
 
     for (let i = 0; i < points.length; i += chunkSize) {
@@ -70,7 +160,6 @@ exports.updateWeatherCache = onSchedule(
       });
 
       await Promise.all(promises);
-      // API制限回避のため少し待機
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
 

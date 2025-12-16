@@ -26,10 +26,10 @@ import {
   Radio,
   CircularProgress,
   Alert,
-  Dialog, // 追加
-  DialogTitle, // 追加
-  DialogContent, // 追加
-  DialogActions, // 追加
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import {
   Edit,
@@ -48,12 +48,12 @@ import {
   CreditCard,
   Star,
   CloudOff,
-  TableChart, // 追加: CSV用アイコン
+  TableChart,
 } from "@mui/icons-material";
-import { format, isWithinInterval, parseISO } from "date-fns"; // 追加
+import { format, isWithinInterval, parseISO } from "date-fns";
 import { useAuth } from "../AuthContext";
 import { PREFECTURES } from "../data";
-import { calculateShiftAmount } from "../logic"; // 追加: 金額計算用
+import { calculateShiftAmount } from "../logic";
 
 export default function SettingsTab({
   jobs,
@@ -83,7 +83,7 @@ export default function SettingsTab({
     isOwner,
     createGroup,
     isPremium,
-    user,
+    currentUser, // ★修正: user ではなく currentUser が正しい名前です
   } = useAuth();
 
   const theme = useTheme();
@@ -98,7 +98,7 @@ export default function SettingsTab({
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState(null);
 
-  // --- CSV出力用State ---
+  // CSV出力用State
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [csvStartDate, setCsvStartDate] = useState(
     format(new Date(), "yyyy-MM-01")
@@ -106,9 +106,9 @@ export default function SettingsTab({
   const [csvEndDate, setCsvEndDate] = useState(
     format(new Date(), "yyyy-MM-dd")
   );
-  const [csvDataType, setCsvDataType] = useState("shifts"); // "shifts" or "wishlist"
+  const [csvDataType, setCsvDataType] = useState("shifts");
 
-  // --- 既存のハンドラー (省略なし) ---
+  // --- 既存のハンドラー ---
   const handleRangeSubmit = () => {
     if (!rangeStart || !rangeEnd || !selectedRangeJob) {
       alert("期間と仕事を選択してください");
@@ -227,7 +227,6 @@ export default function SettingsTab({
     );
   };
 
-  // --- バックアップ (JSON) ---
   const handleBackup = () => {
     if (!isPremium) return;
     const backupData = {
@@ -285,25 +284,21 @@ export default function SettingsTab({
     e.target.value = "";
   };
 
-  // --- ★追加: CSVエクスポート処理 ---
+  // --- CSVエクスポート処理 ---
   const handleExportCsv = () => {
     if (!isPremium) return;
 
     let csvContent = "";
     let filename = "";
-
-    // 日本語の文字化けを防ぐBOM (Byte Order Mark)
     const bom = "\uFEFF";
 
     if (csvDataType === "shifts") {
-      // 1. ヘッダー
       csvContent +=
         bom + "日付,仕事名,ステータス,開始時間,終了時間,休憩(分),金額(概算)\n";
 
       const start = parseISO(csvStartDate);
       const end = parseISO(csvEndDate);
 
-      // 2. データを期間でフィルタリングして行追加
       Object.keys(shifts)
         .sort()
         .forEach((dateStr) => {
@@ -311,24 +306,20 @@ export default function SettingsTab({
           if (isWithinInterval(dateObj, { start, end })) {
             const dayShifts = shifts[dateStr];
             dayShifts.forEach((shift) => {
-              // 自分のシフトのみ、または共有メンバーも含めるか？ -> 現状は全部出す
               const job = jobs.find(
                 (j) => String(j.id) === String(shift.jobId)
               );
               const jobName = job ? job.name : "不明な仕事";
-
-              // ステータス日本語化
               let statusText = "出勤";
               if (shift.status === "absence") statusText = "欠勤";
               if (shift.status === "paid_leave") statusText = "有給";
               if (shift.status === "early_leave") statusText = "早退";
 
-              // 金額計算
               const amount = calculateShiftAmount(shift, job, shifts, dateStr);
 
               const row = [
                 dateStr,
-                `"${jobName}"`, // カンマ対策でダブルクォート
+                `"${jobName}"`,
                 statusText,
                 shift.start || "-",
                 shift.end || "-",
@@ -349,7 +340,6 @@ export default function SettingsTab({
       filename = `wishlist_${format(new Date(), "yyyyMMdd")}.csv`;
     }
 
-    // 3. ダウンロード処理
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -363,7 +353,6 @@ export default function SettingsTab({
     setCsvDialogOpen(false);
   };
 
-  // --- 表示用変数 ---
   const currentMode = settings.weatherMode || "manual";
   const currentLocationName = settings.location?.name || "未設定";
   const sharedCardBg = isDark ? "rgba(255, 255, 255, 0.05)" : "#f0f4ff";
@@ -840,7 +829,6 @@ export default function SettingsTab({
                 バックアップと復元
               </Typography>
 
-              {/* ボタンエリア: JSONバックアップ / CSV出力 */}
               <Grid container spacing={2}>
                 <Grid item xs={6}>
                   <Button
@@ -863,7 +851,6 @@ export default function SettingsTab({
                     JSON復元
                   </Button>
                 </Grid>
-                {/* ★追加: CSV出力ボタン */}
                 <Grid item xs={12}>
                   <Button
                     variant="contained"
@@ -1047,16 +1034,21 @@ export default function SettingsTab({
               <ListItemText
                 primary="ステータス"
                 secondary={
-                  user && !user.isAnonymous ? user.email : "未ログイン (ゲスト)"
+                  currentUser && !currentUser.isAnonymous // ★修正: user -> currentUser
+                    ? currentUser.email
+                    : "未ログイン (ゲスト)"
                 }
                 secondaryTypographyProps={{
                   color:
-                    user && !user.isAnonymous ? "primary" : "text.secondary",
-                  fontWeight: user && !user.isAnonymous ? "bold" : "normal",
+                    currentUser && !currentUser.isAnonymous
+                      ? "primary"
+                      : "text.secondary",
+                  fontWeight:
+                    currentUser && !currentUser.isAnonymous ? "bold" : "normal",
                 }}
               />
               <ListItemSecondaryAction>
-                {user && !user.isAnonymous ? (
+                {currentUser && !currentUser.isAnonymous ? (
                   <Button
                     size="small"
                     color="error"
@@ -1129,7 +1121,6 @@ export default function SettingsTab({
         </CardContent>
       </Card>
 
-      {/* ★追加: CSV出力設定ダイアログ */}
       <Dialog open={csvDialogOpen} onClose={() => setCsvDialogOpen(false)}>
         <DialogTitle>CSVエクスポート設定</DialogTitle>
         <DialogContent>
