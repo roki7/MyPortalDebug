@@ -55,6 +55,51 @@ import { useAuth } from "../AuthContext";
 import { PREFECTURES } from "../data";
 import { calculateShiftAmount } from "../logic";
 
+const PLAN_OPTIONS = [
+  {
+    key: "standard-monthly",
+    label: "スタンダード（月額）",
+    description: "個人向け・月契約",
+    priceDisplay: "月額プラン",
+    priceId: "price_1Sf26yFE338FL8BE2oCZuwXC",
+  },
+  {
+    key: "standard-yearly",
+    label: "スタンダード（年額）",
+    description: "個人向け・年契約",
+    priceDisplay: "年額プラン",
+    priceId: "price_1Sf27qFE338FL8BES7QVXHJY",
+  },
+  {
+    key: "pair-monthly",
+    label: "ペア（月額）",
+    description: "2人で共有・月契約",
+    priceDisplay: "月額プラン",
+    priceId: "price_1Sf28cFE338FL8BE3dq0B9Rn",
+  },
+  {
+    key: "pair-yearly",
+    label: "ペア（年額）",
+    description: "2人で共有・年契約",
+    priceDisplay: "年額プラン",
+    priceId: "price_1Sf28xFE338FL8BEWhpmRla5",
+  },
+  {
+    key: "family-monthly",
+    label: "ファミリー（月額）",
+    description: "最大4人・月契約",
+    priceDisplay: "月額プラン",
+    priceId: "price_1Sf29SFE338FL8BEoWqZdK12",
+  },
+  {
+    key: "family-yearly",
+    label: "ファミリー（年額）",
+    description: "最大4人・年契約",
+    priceDisplay: "年額プラン",
+    priceId: "price_1Sf29zFE338FL8BEoAexoYJJ",
+  },
+];
+
 export default function SettingsTab({
   jobs,
   settings,
@@ -75,6 +120,8 @@ export default function SettingsTab({
   onLogout,
   onLoginRequest,
   onManagePlan,
+  planCheckoutState,
+  isProcessingPayment,
 }) {
   const {
     userProfile,
@@ -107,6 +154,8 @@ export default function SettingsTab({
     format(new Date(), "yyyy-MM-dd")
   );
   const [csvDataType, setCsvDataType] = useState("shifts");
+  const managePlanLoading = planCheckoutState?.loading ?? false;
+  const managingPriceId = planCheckoutState?.priceId ?? null;
 
   // --- 既存のハンドラー ---
   const handleRangeSubmit = () => {
@@ -1094,15 +1143,24 @@ export default function SettingsTab({
                     </Typography>
                   }
                 />
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<CreditCard />}
-                  onClick={onManagePlan}
-                  sx={{ ml: 2 }}
-                >
-                  プラン変更
-                </Button>
+                {isPremium && (
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={
+                      isProcessingPayment ? (
+                        <CircularProgress size={16} color="inherit" />
+                      ) : (
+                        <CreditCard />
+                      )
+                    }
+                    disabled={isProcessingPayment}
+                    onClick={() => onManagePlan()}
+                    sx={{ ml: 2 }}
+                  >
+                    {isProcessingPayment ? "読み込み中..." : "契約を管理"}
+                  </Button>
+                )}
               </Box>
             </ListItem>
           </List>
@@ -1117,6 +1175,60 @@ export default function SettingsTab({
               <br />
               大切なデータは、Premiumプラン（クラウド保存）への加入をお勧めします。
             </Alert>
+          )}
+
+          {!isPremium && (
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                プランを選んで申し込む
+              </Typography>
+              <Grid container spacing={2}>
+                {PLAN_OPTIONS.map((plan) => {
+                  const isProcessing =
+                    managePlanLoading && managingPriceId === plan.priceId;
+                  return (
+                    <Grid item xs={12} sm={6} key={plan.key}>
+                      <Card variant="outlined" sx={{ height: "100%" }}>
+                        <CardContent
+                          sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 1,
+                          }}
+                        >
+                          <Typography fontWeight="bold">
+                            {plan.label}
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            color="text.secondary"
+                          >
+                            {plan.description}
+                          </Typography>
+                          <Button
+                            variant="contained"
+                            color="secondary"
+                            fullWidth
+                            disabled={managePlanLoading}
+                            onClick={() => onManagePlan(plan.priceId)}
+                            startIcon={
+                              isProcessing ? (
+                                <CircularProgress
+                                  size={18}
+                                  color="inherit"
+                                />
+                              ) : undefined
+                            }
+                          >
+                            {isProcessing ? "処理中..." : "このプランにする"}
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  );
+                })}
+              </Grid>
+            </Box>
           )}
         </CardContent>
       </Card>

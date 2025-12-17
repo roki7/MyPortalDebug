@@ -1,4 +1,3 @@
-// src/MainApp.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Box,
@@ -118,6 +117,11 @@ export default function MainApp() {
   const [editingJob, setEditingJob] = useState(null);
 
   const [expandedHeader, setExpandedHeader] = useState(true);
+  const [planCheckoutState, setPlanCheckoutState] = useState({
+    loading: false,
+    priceId: null,
+  });
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   const [settings, setSettings] = useState(INITIAL_SETTINGS);
   const [members, setMembers] = useState(INITIAL_MEMBERS);
@@ -403,32 +407,68 @@ export default function MainApp() {
     setRealtimeLabel(label);
   }, [fullMergedData, currentDate, now, settings, isHousehold]);
 
-  const handleManagePlan = async () => {
-    // すでにプレミアムならカスタマーポータルへ（未実装ならアラート）
+  const handleManagePlan = async (priceId) => {
+    // すでにプレミアムならカスタマーポータルへ
     if (isPremium) {
-      // 本来は createPortalSession という関数も作って呼び出します
-      alert("解約・カード変更用のポータル機能はこれから実装します！");
+      if (isProcessingPayment) return;
+      try {
+        setIsProcessingPayment(true);
+        const functions = getFunctions(undefined, "asia-northeast1");
+        const createPortalSession = httpsCallable(
+          functions,
+          "createPortalSession"
+        );
+        const { data } = await createPortalSession({
+          returnUrl: window.location.origin,
+        });
+
+        if (data?.url) {
+          window.location.href = data.url;
+        } else {
+          throw new Error("ポータルURLが取得できませんでした");
+        }
+      } catch (error) {
+        console.error("ポータルセッション作成エラー", error);
+        alert("契約管理画面への移動に失敗しました");
+        setIsProcessingPayment(false);
+      }
       return;
     }
 
+    if (!priceId) {
+      alert("申し込むプランを選択してください。");
+      return;
+    }
+
+    if (planCheckoutState.loading) return;
+
     // 未加入ならチェックアウトへ誘導
     try {
+      setPlanCheckoutState({ loading: true, priceId });
+      // ★修正: ここでリージョンを指定して初期化します
       const functions = getFunctions(undefined, "asia-northeast1");
 
       const createSession = httpsCallable(functions, "createCheckoutSession");
 
-      // ローディング表示などがあると親切
       const { data } = await createSession({
-        origin: window.location.origin, // 戻り先URL用
+        origin: window.location.origin,
+        priceId,
       });
 
       if (data.url) {
-        window.location.href = data.url; // Stripe決済画面へジャンプ
+        window.location.href = data.url;
+      } else {
+        throw new Error("Checkout URL が取得できませんでした");
       }
     } catch (error) {
       console.error("決済セッション作成エラー", error);
       alert("決済画面への移動に失敗しました");
+      setPlanCheckoutState({ loading: false, priceId: null });
+      return;
     }
+
+    // フェイルセーフ（通常は画面遷移する）
+    setPlanCheckoutState({ loading: false, priceId: null });
   };
 
   const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
@@ -1128,6 +1168,8 @@ export default function MainApp() {
               onLogout={handleLogout}
               onLoginRequest={handleLoginRequest}
               onManagePlan={handleManagePlan}
+              planCheckoutState={planCheckoutState}
+              isProcessingPayment={isProcessingPayment}
             />
           )}
         </Box>
