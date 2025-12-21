@@ -26,7 +26,7 @@ import {
   YAxis, // ★追加
   CartesianGrid, // ★追加
 } from "recharts";
-import AdSenseBanner from "./AdSenseBanner";
+import AdSenseBanner from "../../../components/ads/AdSenseBanner";
 
 const COLORS = [
   "#0088FE",
@@ -51,11 +51,39 @@ export default function ReportTab({
   // ★追加: 個人事業主モード（見込み表示）のオンオフ
   const [showForecast, setShowForecast] = useState(false);
 
+  // 月別収入データは、過去の実装差分でキー名が揺れることがあるので保険をかける
+  const resolvedMonthlyIncomeData = useMemo(() => {
+    const raw =
+      (Array.isArray(monthlyIncomeData) && monthlyIncomeData.length > 0
+        ? monthlyIncomeData
+        : null) ||
+      summary?.monthlyIncomeData ||
+      summary?.monthlyData ||
+      summary?.monthlyIncome ||
+      summary?.incomeByMonth ||
+      [];
+
+    if (!Array.isArray(raw)) return [];
+
+    // 形を { month: string, income: number } に寄せる
+    return raw
+      .map((d, i) => {
+        if (d == null) return null;
+        if (typeof d === "number") {
+          return { month: String(i + 1), income: d };
+        }
+        const month = d.month ?? d.label ?? d.m ?? d.key ?? String(i + 1);
+        const income = d.income ?? d.value ?? d.amount ?? d.total ?? 0;
+        return { ...d, month: String(month), income: Number(income) || 0 };
+      })
+      .filter(Boolean);
+  }, [monthlyIncomeData, summary]);
+
   // ★追加: グラフ用データの計算（見込み線の追加）
   const chartData = useMemo(() => {
-    if (!monthlyIncomeData || monthlyIncomeData.length === 0) return [];
+    if (!resolvedMonthlyIncomeData || resolvedMonthlyIncomeData.length === 0) return [];
     // 元データをコピーして加工
-    const data = monthlyIncomeData.map((d) => ({ ...d }));
+    const data = resolvedMonthlyIncomeData.map((d) => ({ ...d }));
 
     // 過去3ヶ月平均の計算 (Forecast)
     // data[i] の見込み = (data[i-1] + data[i-2] + data[i-3]) / 3
@@ -157,7 +185,7 @@ export default function ReportTab({
           </Box>
           <Divider sx={{ mb: 2 }} />
 
-          <div style={{ width: "100%", height: 300 }}>
+          <div style={{ width: "100%", height: 300, minWidth: 0 }}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
                 data={chartData}
@@ -243,9 +271,9 @@ export default function ReportTab({
             📊 収支内訳 (概算)
           </Typography>
           {/* ★修正: 素のdivでサイズを固定し、ResponsiveContainerに渡す */}
-          <div style={{ width: "100%", height: 250 }}>
+          <div style={{ width: "100%", height: 250, minWidth: 0 }}>
             {summary && summary.length > 0 ? (
-              <ResponsiveContainer width="99%" height="100%">
+              <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={summary}

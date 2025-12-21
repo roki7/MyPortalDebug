@@ -20,10 +20,10 @@ import {
   SentimentVeryDissatisfied,
   Lock,
 } from "@mui/icons-material";
-import { useAuth } from "../AuthContext";
+import { useAuth } from "../../../AuthContext";
 import { doc, updateDoc, increment } from "firebase/firestore";
-import { db } from "../firebase";
-import AdSenseBanner from "./AdSenseBanner";
+import { db } from "../../../firebase";
+import AdSenseBanner from "../../../components/AdSenseBanner";
 
 // スロットの絵柄
 const SYMBOLS = ["🍒", "🔔", "⭐", "7️⃣", "🍇"];

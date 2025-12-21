@@ -666,11 +666,11 @@ export const getDisplayLabel = (settings) => {
   return `確定 (${baseText})`;
 };
 
-export const getAnnualMonthlyIncome = (shifts, jobs, currentDate) => {
+export const getAnnualMonthlyIncome = (shifts, jobs, currentDateOrYear) => {
   // 1月〜12月の器を作成 (0埋め)
   const monthlyTotals = Array(12).fill(0);
 
-  const targetYear = currentDate.getFullYear();
+  const targetYear = typeof currentDateOrYear === 'number' ? currentDateOrYear : (currentDateOrYear?.getFullYear ? currentDateOrYear.getFullYear() : new Date().getFullYear());
 
   // 全シフトを走査して集計
   Object.keys(shifts).forEach((dateStr) => {

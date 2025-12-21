@@ -22,8 +22,8 @@ import {
 } from "@mui/icons-material";
 import { isHoliday } from "holiday-jp";
 
-import { useAuth } from "../AuthContext";
-import AdSenseBanner from "./AdSenseBanner";
+import { useAuth } from "../../../AuthContext";
+import AdSenseBanner from "../../../components/AdSenseBanner";
 
 const getWeatherIcon = (code) => {
   if (code === undefined) return null;

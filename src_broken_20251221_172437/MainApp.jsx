@@ -66,11 +66,12 @@ import MotivationTab from "./features/motivation/components/MotivationTab";
 import SettingsTab from "./features/settings/components/SettingsTab";
 import ShoppingTab from "./features/shopping/components/ShoppingTab";
 import ReportTab from "./features/report/components/ReportTab";
-import ReloadPrompt from "./components/common/ReloadPrompt"; // Step 7.1で移動済みの場合
+import ReloadPrompt from "./components/common/ReloadPrompt";
 import MyLinksTab from "./features/mylinks/components/MyLinksTab";
 import PointTab from "./features/point/components/PointTab";
 import AnalogClock from "./features/shifts/components/AnalogClock";
 
+// Logics (Direct import for actions)
 import {
   generateShiftsForYear,
   generateShiftsRange,
@@ -82,42 +83,35 @@ import {
 
 import { useAuth } from "./AuthContext";
 import { db } from "./firebase";
+
+// Hooks
 import { useAppData } from "./hooks/useAppData";
 import { useShiftAggregations } from "./features/shifts/hooks/useShiftAggregations";
 import { useRealtimeStatus } from "./features/shifts/hooks/useRealtimeStatus";
 import { useWeather } from "./features/weather/hooks/useWeather";
 import { useCreditCardNotification } from "./features/finance/hooks/useCreditCardNotification";
 
-// Helper: 扶養チャート用フィルタ
-function filterShiftsByTargetMember(shifts, targetMemberId) {
-  if (!shifts || typeof shifts !== "object") return {};
-  // targetMemberId:
-  // - "me": memberId が未設定(null/undefined)のシフトも「本人」として扱う
-  // - それ以外: memberId が一致するものだけを対象（未設定は除外）
-  const target = targetMemberId ?? "me";
-  const filtered = {};
-  for (const [dateStr, dayShifts] of Object.entries(shifts)) {
-    if (!Array.isArray(dayShifts)) {
-      filtered[dateStr] = dayShifts;
-      continue;
+// --- helpers ---
+// 扶養チャート / 年間推移チャート用:
+// 「設定で選んだ対象メンバー(settings.targetMemberId)」の収入を、UIの「世帯合算」等とは独立して計算する。
+// 既存の calculateAnnualIncome / getAnnualSummary / getAnnualMonthlyIncome のロジック（支払日ベース等）をそのまま使うため、
+// 対象メンバーの job.memberId を一時的に "me" 扱いに変換した jobs を作る。
+function makeJobsForTargetMember(jobs, targetMemberId) {
+  if (!Array.isArray(jobs)) return [];
+  if (!targetMemberId || targetMemberId === "me") return jobs;
+
+  return jobs.map((j) => {
+    // 対象メンバーの仕事だけを「me」扱いにして personal 集計へ載せる
+    if (String(j.memberId) === String(targetMemberId)) {
+      return { ...j, memberId: "me" };
     }
-    filtered[dateStr] = dayShifts.filter((s) => {
-      const mid = s?.memberId;
-      if (target === "me") {
-        return mid == null || String(mid) === "me";
-      }
-      return mid != null && String(mid) === String(target);
-    });
-  }
-  return filtered;
+    // それ以外は personal に入らない memberId を付与して除外
+    return { ...j, memberId: "__other__" };
+  });
 }
-
-function filterMyShifts(shifts) {
-  return filterShiftsByTargetMember(shifts, "me");
-}
-
 
 export default function MainApp() {
+  // --- 1. Auth & Data ---
   const {
     currentUser,
     userProfile,
@@ -128,14 +122,19 @@ export default function MainApp() {
     canShareGroup,
     isPremium,
   } = useAuth();
+
   const { isLoaded, data, actions } = useAppData();
 
+  // データを展開（Hooksで使うため、isLoadedチェックより先に行う）
+  // useAppDataは初期値を持っているため、未ロードでも安全にアクセス可能です
   const {
     settings = {
       theme: "light",
       calcMode: "realtime",
-      targetLimit: 0,
+      // 扶養のデフォルト上限（法改正反映）
+      targetLimit: 1230000,
       location: null,
+      targetMemberId: "me",
     },
     members = [],
     jobs = [],
@@ -153,60 +152,55 @@ export default function MainApp() {
     kickDialog = false,
   } = data || {};
 
+  // --- 2. UI State (Hooks) ---
   const [tabIndex, setTabIndex] = useState(0);
   const [openDrawer, setOpenDrawer] = useState(false);
-  const [viewMode, setViewMode] = useState("personal");
+  const [viewMode, setViewMode] = useState("personal"); // 'personal' | 'shared'
   const [isHousehold, setIsHousehold] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [expandedHeader, setExpandedHeader] = useState(true);
 
-  // Report (年間収入推移) はヘッダーの月表示とは独立して年を切り替える
-  const [reportYear, setReportYear] = useState(new Date().getFullYear());
-
-  // Month Picker
+  // Month jump picker (header年月タップで移動)
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const [pickerYear, setPickerYear] = useState(new Date().getFullYear());
   const [pickerMonth, setPickerMonth] = useState(new Date().getMonth() + 1);
 
+  // UI - Modals & Dialogs
   const [jobDialogOpen, setJobDialogOpen] = useState(false);
   const [editingJob, setEditingJob] = useState(null);
   const [openMenu, setOpenMenu] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [editShift, setEditShift] = useState(null);
   const [kickDialogLocal, setKickDialogLocal] = useState(false);
+
+  // UI - Payment Processing
   const [planCheckoutState, setPlanCheckoutState] = useState({
     loading: false,
     priceId: null,
   });
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
+  // Side Effects (extracted to hooks)
   const weatherData = useWeather(settings?.location);
-  const ccNotification = useCreditCardNotification(
-    accounts,
-    payments,
-    isLoaded
-  );
+  const ccNotification = useCreditCardNotification(accounts, payments, isLoaded);
 
+  // Theme
   const currentThemeMode = settings.theme || "light";
   const currentTheme = themeMap[currentThemeMode];
   const isNeon = currentThemeMode === "neon";
 
-  const {
-    fullMergedData,
-    displayShifts,
-    displayJobs,
-    annualSummary,
-    uiValues,
-  } = useShiftAggregations(
-    currentUser,
-    shifts,
-    jobs,
-    sharedDocs,
-    currentDate,
-    settings,
-    viewMode,
-    isHousehold
-  );
+  // --- 3. Calculations (Moved to Hooks) ---
+  const { fullMergedData, displayShifts, displayJobs, annualSummary, uiValues } =
+    useShiftAggregations(
+      currentUser,
+      shifts,
+      jobs,
+      sharedDocs,
+      currentDate,
+      settings,
+      viewMode,
+      isHousehold
+    );
 
   const { currentRealtimeEarnings, realtimeLabel } = useRealtimeStatus(
     fullMergedData,
@@ -219,29 +213,34 @@ export default function MainApp() {
     ? recurring.reduce((sum, item) => sum + (parseInt(item.amount) || 0), 0)
     : 0;
 
-  // 扶養（制限）チャート用: 設定の「扶養対象メンバー」だけを算出（世帯合算スイッチとは独立）
-  const targetMemberId = settings?.targetMemberId ?? "me";
-  const targetShifts = filterShiftsByTargetMember(shifts, targetMemberId);
-  const fuyoAnnualIncome =
-    calculateAnnualIncome(targetShifts, jobs, reportYear)?.personal || 0;
-
-  // 年間収入推移（グラフ）用: 世帯合算スイッチに連動
-  const trendShifts = isHousehold ? shifts : filterMyShifts(shifts);
-  const trendMonthlyIncomeData = getAnnualMonthlyIncome(
-    trendShifts,
-    jobs,
-    reportYear
+  // --- Dependent / Report target calculations (settings-driven) ---
+  // 扶養/推移系のチャートは「設定の対象メンバー」で固定して計算（ヘッダーの世帯合算とは独立）
+  const targetMemberId = settings?.targetMemberId || "me";
+  const jobsForTarget = useMemo(
+    () => makeJobsForTargetMember(jobs, targetMemberId),
+    [jobs, targetMemberId]
   );
-  const trendPrevYearMonthlyIncomeData = getAnnualMonthlyIncome(
-    trendShifts,
-    jobs,
-    reportYear - 1
+  const targetAnnualIncome = useMemo(
+    () => calculateAnnualIncome(shifts, jobsForTarget, currentDate)?.personal || 0,
+    [shifts, jobsForTarget, currentDate]
+  );
+  const targetAnnualSummary = useMemo(
+    () => getAnnualSummary(shifts, jobsForTarget, currentDate),
+    [shifts, jobsForTarget, currentDate]
+  );
+  const targetMonthlyIncomeData = useMemo(
+    () => getAnnualMonthlyIncome(shifts, jobsForTarget, currentDate),
+    [shifts, jobsForTarget, currentDate]
   );
 
+  // --- 4. Effects (Side Effects) ---
+
+  // Kick Notification Sync
   useEffect(() => {
     if (kickDialog) setKickDialogLocal(true);
   }, [kickDialog]);
 
+  // ★★★ 修正箇所: Loading UI の判定をすべての Hooks 宣言の後に移動 ★★★
   if (!isLoaded) {
     return (
       <ThemeProvider theme={themeMap.light}>
@@ -266,12 +265,15 @@ export default function MainApp() {
     );
   }
 
+  // --- 5. Handlers ---
+
   const handleKickConfirm = async () => {
-    if (currentUser)
+    if (currentUser) {
       await updateDoc(doc(db, "users", currentUser.uid), {
         kickedFrom: null,
         kickedAt: null,
       });
+    }
     actions.setKickDialog(false);
     setKickDialogLocal(false);
   };
@@ -285,14 +287,21 @@ export default function MainApp() {
     setPickerMonth(currentDate.getMonth() + 1);
     setMonthPickerOpen(true);
   };
+
   const handleJumpToMonth = () => {
     const y = Number(pickerYear) || new Date().getFullYear();
     const m = Math.min(12, Math.max(1, Number(pickerMonth) || 1));
     setCurrentDate(new Date(y, m - 1, 1));
     setMonthPickerOpen(false);
   };
-  const handleApplyMonthPicker = () => handleJumpToMonth();
 
+  // Alias for the Month Picker "決定" button.
+  // (Earlier iterations referenced this name; keeping it prevents runtime errors.)
+  const handleApplyMonthPicker = () => {
+    handleJumpToMonth();
+  };
+
+  // Job & Shift Actions
   const handleOpenJobAdd = () => {
     setEditingJob(null);
     setJobDialogOpen(true);
@@ -303,33 +312,40 @@ export default function MainApp() {
   };
 
   const handleSaveJob = (jobData) => {
+    // JobEditDialog は「新規作成」でも id を付与する実装になっているため、
+    // `id がある = 編集` の判定だと新規追加ができない。
+    // 既存 jobs に同じ id が存在するかで update / add を分岐する。
     const incomingId = jobData?.id;
     const exists =
-      incomingId != null &&
-      jobs.some((j) => String(j.id) === String(incomingId));
-    if (exists) actions.updateJob(jobData);
-    else actions.addJob({ ...jobData, id: incomingId ?? Date.now() });
+      incomingId != null && jobs.some((j) => String(j.id) === String(incomingId));
+
+    if (exists) {
+      actions.updateJob(jobData);
+    } else {
+      actions.addJob({ ...jobData, id: incomingId ?? Date.now() });
+    }
   };
 
   const handleUpdateShiftFull = (updatedShift) => {
     if (!selectedDate) return;
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     const current = shifts[dateStr] || [];
-    actions.updateShiftsForDate(
-      dateStr,
-      current.map((s) => (s.id === updatedShift.id ? updatedShift : s))
+    const newShifts = current.map((s) =>
+      s.id === updatedShift.id ? updatedShift : s
     );
+    actions.updateShiftsForDate(dateStr, newShifts);
     setEditShift(null);
   };
+
   const handleDeleteShift = () => {
     if (!editShift || !selectedDate) return;
     const dateStr = format(selectedDate, "yyyy-MM-dd");
-    actions.updateShiftsForDate(
-      dateStr,
-      (shifts[dateStr] || []).filter((s) => s.id !== editShift.id)
-    );
+    const current = shifts[dateStr] || [];
+    const newShifts = current.filter((s) => s.id !== editShift.id);
+    actions.updateShiftsForDate(dateStr, newShifts);
     setEditShift(null);
   };
+
   const handleAddShift = (
     job,
     manualAmount = 0,
@@ -360,7 +376,10 @@ export default function MainApp() {
   };
 
   const handleGenerateAnnualShifts = (year) => {
-    if (jobs.length === 0) return alert("仕事を登録してください");
+    if (jobs.length === 0) {
+      alert("仕事を登録してください");
+      return;
+    }
     if (!window.confirm(`${year}年のシフトを一括生成しますか？`)) return;
     const newShifts = generateShiftsForYear(year, jobs);
     const merged = { ...shifts };
@@ -370,9 +389,13 @@ export default function MainApp() {
     actions.setShifts(merged);
     alert("完了");
   };
+
   const handleGenerateRange = (start, end, jobId) => {
     const targetJob = jobs.find((j) => String(j.id) === String(jobId));
-    if (!targetJob) return alert("仕事が見つかりません");
+    if (!targetJob) {
+      alert("仕事が見つかりません");
+      return;
+    }
     const newShifts = generateShiftsRange(
       start,
       end,
@@ -386,27 +409,32 @@ export default function MainApp() {
     actions.setShifts(merged);
     alert("完了しました");
   };
+
   const handleDeleteRange = (start, end, jobId) => {
-    actions.setShifts(deleteShiftsRange(shifts, start, end, jobId));
+    actions.setShifts(deleteShiftsRange(shifts, start, end, parseInt(jobId)));
     alert("削除");
   };
+
   const handleFullImport = (importedData) => {
     if (window.confirm("データを復元しますか？")) {
       actions.restoreData(importedData);
       alert("復元しました");
     }
   };
+
+  // Payment & Auth Actions
   const handleLogout = async () => {
     if (window.confirm("ログアウトしますか？")) {
       try {
         await logout();
         window.location.reload();
       } catch (error) {
-        console.error(error);
+        console.error("Logout failed", error);
         alert("ログアウトに失敗しました");
       }
     }
   };
+
   const handleManagePlan = async (priceId) => {
     if (isPremium) {
       if (isProcessingPayment) return;
@@ -421,6 +449,7 @@ export default function MainApp() {
           returnUrl: window.location.origin,
         });
         if (data?.url) window.location.href = data.url;
+        else throw new Error("ポータルURL取得失敗");
       } catch (e) {
         console.error(e);
         alert("失敗");
@@ -428,8 +457,13 @@ export default function MainApp() {
       }
       return;
     }
-    if (!priceId) return alert("プランを選択してください");
+
+    if (!priceId) {
+      alert("プランを選択してください");
+      return;
+    }
     if (planCheckoutState.loading) return;
+
     try {
       setPlanCheckoutState({ loading: true, priceId });
       const functions = getFunctions(undefined, "asia-northeast1");
@@ -439,6 +473,7 @@ export default function MainApp() {
         priceId,
       });
       if (data.url) window.location.href = data.url;
+      else throw new Error("URL取得失敗");
     } catch (e) {
       console.error(e);
       alert("失敗");
@@ -486,9 +521,7 @@ export default function MainApp() {
   const moreTabs = [
     { icon: <Assessment />, label: "分析", index: 4 },
     { icon: <EmojiEvents />, label: "モチベ", index: 5 },
-    ...(isPremium
-      ? [{ icon: <CardGiftcard />, label: "ポイ活", index: 7 }]
-      : []),
+    ...(isPremium ? [{ icon: <CardGiftcard />, label: "ポイ活", index: 7 }] : []),
     { icon: <Settings />, label: "設定", index: 6 },
   ];
 
@@ -512,14 +545,14 @@ export default function MainApp() {
             <Button onClick={handleKickConfirm}>OK</Button>
           </DialogActions>
         </Dialog>
+
+        {/* Header: Month jump picker */}
         <Dialog
           open={monthPickerOpen}
           onClose={() => setMonthPickerOpen(false)}
-          fullWidth
-          maxWidth="xs"
         >
           <DialogTitle>月へ移動</DialogTitle>
-          <DialogContent sx={{ display: "flex", gap: 2, pt: 2, flexWrap: "wrap", minWidth: 320 }}>
+          <DialogContent sx={{ display: "flex", gap: 2, pt: 2 }}>
             <FormControl fullWidth>
               <InputLabel>年</InputLabel>
               <Select
@@ -562,6 +595,7 @@ export default function MainApp() {
           </DialogActions>
         </Dialog>
 
+        {/* Header */}
         <Paper
           elevation={3}
           sx={{
@@ -593,12 +627,14 @@ export default function MainApp() {
               </Button>
             </Box>
           )}
+
           <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
             <Box sx={{ flexGrow: 1 }}>
               <IconButton onClick={handlePrevMonth}>
                 <ArrowBack />
               </IconButton>
             </Box>
+
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
               <Button
                 onClick={handleOpenMonthPicker}
@@ -613,6 +649,7 @@ export default function MainApp() {
                 {expandedHeader ? <ExpandLess /> : <ExpandMore />}
               </IconButton>
             </Box>
+
             <Box
               sx={{
                 flexGrow: 1,
@@ -632,10 +669,15 @@ export default function MainApp() {
               </IconButton>
             </Box>
           </Box>
+
           {expandedHeader && (
             <Box>
               <Box
-                sx={{ display: "flex", justifyContent: "space-between", mt: 1 }}
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  mt: 1,
+                }}
               >
                 <Box sx={{ display: "flex", flexDirection: "column" }}>
                   <Typography variant="caption">
@@ -658,6 +700,7 @@ export default function MainApp() {
                   label={<Typography variant="caption">世帯合算</Typography>}
                 />
               </Box>
+
               <Box
                 sx={{
                   display: "flex",
@@ -672,9 +715,11 @@ export default function MainApp() {
                     ¥{currentRealtimeEarnings.toLocaleString()}
                   </Typography>
                 </Box>
+
                 <Box sx={{ width: 100, height: 100 }}>
                   <AnalogClock currentTheme={currentTheme} isNeon={isNeon} />
                 </Box>
+
                 <Box sx={{ textAlign: "right" }}>
                   <Typography variant="caption">着地見込み</Typography>
                   <Typography variant="h6">
@@ -682,12 +727,12 @@ export default function MainApp() {
                   </Typography>
                 </Box>
               </Box>
+
               <LinearProgress
                 variant="determinate"
                 value={
                   uiValues.currentProjected > 0
-                    ? (currentRealtimeEarnings / uiValues.currentProjected) *
-                      100
+                    ? (currentRealtimeEarnings / uiValues.currentProjected) * 100
                     : 0
                 }
                 sx={{ mt: 1, height: 6, borderRadius: 3 }}
@@ -695,7 +740,9 @@ export default function MainApp() {
             </Box>
           )}
         </Paper>
+
         <Box sx={{ p: 2 }}>
+          {/* Step 6: クレジットカード請求通知バナー */}
           {ccNotification && (
             <Paper
               elevation={0}
@@ -715,15 +762,12 @@ export default function MainApp() {
               >
                 ⚠️ {ccNotification.title}
               </Typography>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ mt: 0.5 }}
-              >
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                 {ccNotification.msg}
               </Typography>
             </Paper>
           )}
+
           {tabIndex === 0 && (
             <CalendarTab
               currentDate={currentDate}
@@ -746,6 +790,7 @@ export default function MainApp() {
               onNextMonth={handleNextMonth}
             />
           )}
+
           {tabIndex === 1 && (
             <FinanceTab
               accounts={accounts}
@@ -755,9 +800,7 @@ export default function MainApp() {
               currentDate={currentDate}
               onAddAccount={(acc) => actions.setAccounts([...accounts, acc])}
               onUpdateAccount={(u) =>
-                actions.setAccounts(
-                  accounts.map((a) => (a.id === u.id ? u : a))
-                )
+                actions.setAccounts(accounts.map((a) => (a.id === u.id ? u : a)))
               }
               onAddPayment={(p) =>
                 actions.setPayments([
@@ -773,9 +816,7 @@ export default function MainApp() {
                 ])
               }
               onUpdatePayment={(u) =>
-                actions.setPayments(
-                  payments.map((p) => (p.id === u.id ? u : p))
-                )
+                actions.setPayments(payments.map((p) => (p.id === u.id ? u : p)))
               }
               onAddTemplate={(name) =>
                 actions.setTemplates([
@@ -793,9 +834,7 @@ export default function MainApp() {
               recurring={recurring}
               onAddRecurring={(r) => actions.setRecurring([...recurring, r])}
               onUpdateRecurring={(u) =>
-                actions.setRecurring(
-                  recurring.map((r) => (r.id === u.id ? u : r))
-                )
+                actions.setRecurring(recurring.map((r) => (r.id === u.id ? u : r)))
               }
               onDeleteRecurring={(id) =>
                 actions.setRecurring(recurring.filter((r) => r.id !== id))
@@ -818,13 +857,12 @@ export default function MainApp() {
               onNextMonth={handleNextMonth}
             />
           )}
+
           {tabIndex === 2 && (
             <ShoppingTab
               shopping={shopping}
               onUpdateShopping={actions.setShopping}
-              onUpdateStock={(s) =>
-                actions.setShopping({ ...shopping, stock: s })
-              }
+              onUpdateStock={(s) => actions.setShopping({ ...shopping, stock: s })}
               onAddPayment={(p) =>
                 actions.setPayments([
                   ...payments,
@@ -844,6 +882,7 @@ export default function MainApp() {
               onNextMonth={handleNextMonth}
             />
           )}
+
           {tabIndex === 3 && (
             <MyLinksTab
               myLinks={myLinks}
@@ -855,13 +894,9 @@ export default function MainApp() {
               onDeleteMyLink={(id) =>
                 actions.setMyLinks(myLinks.filter((l) => l.id !== id))
               }
-              onAddCategory={(c) =>
-                actions.setLinkCategories([...linkCategories, c])
-              }
+              onAddCategory={(c) => actions.setLinkCategories([...linkCategories, c])}
               onDeleteCategory={(id) =>
-                actions.setLinkCategories(
-                  linkCategories.filter((c) => c.id !== id)
-                )
+                actions.setLinkCategories(linkCategories.filter((c) => c.id !== id))
               }
               onEditCategory={(id, n) =>
                 actions.setLinkCategories(
@@ -872,21 +907,19 @@ export default function MainApp() {
               }
             />
           )}
+
           {tabIndex === 4 && (
             <ReportTab
-              // 扶養（制限）チャート: 設定の扶養対象メンバーのみ
-              fuyoAnnualIncome={fuyoAnnualIncome}
-              fuyoTargetLimit={settings.targetLimit}
-              // 年間収入推移: 年を選択でき、世帯合算スイッチに連動
-              reportYear={reportYear}
-              onChangeReportYear={setReportYear}
-              isHousehold={isHousehold}
-              monthlyIncomeData={trendMonthlyIncomeData}
-              prevYearMonthlyIncomeData={trendPrevYearMonthlyIncomeData}
+              // Report / 扶養チャートは「設定で選択した対象メンバー」に合わせて表示
+              annualIncome={targetAnnualIncome}
+              summary={targetAnnualSummary}
+              targetLimit={settings.targetLimit ?? 1230000}
+              monthlyIncomeData={targetMonthlyIncomeData}
               accounts={accounts}
               totalFixedCost={totalFixedCost}
             />
           )}
+
           {tabIndex === 5 && (
             <MotivationTab
               currentEarnings={uiValues.currentProjected}
@@ -906,6 +939,7 @@ export default function MainApp() {
               }
             />
           )}
+
           {tabIndex === 7 && (
             <PointTab
               points={points}
@@ -913,6 +947,7 @@ export default function MainApp() {
               isPremium={isPremium}
             />
           )}
+
           {tabIndex === 6 && (
             <SettingsTab
               jobs={jobs}
@@ -941,6 +976,7 @@ export default function MainApp() {
             />
           )}
         </Box>
+
         <Paper
           sx={{
             position: "fixed",
@@ -967,6 +1003,7 @@ export default function MainApp() {
             ))}
           </Tabs>
         </Paper>
+
         <Fab
           color={isNeon ? "primary" : "secondary"}
           sx={{
@@ -979,15 +1016,13 @@ export default function MainApp() {
         >
           <MoreHoriz />
         </Fab>
+
         <Drawer
           anchor="bottom"
           open={openDrawer}
           onClose={() => setOpenDrawer(false)}
           PaperProps={{
-            sx: {
-              borderRadius: "16px 16px 0 0",
-              pb: "env(safe-area-inset-bottom)",
-            },
+            sx: { borderRadius: "16px 16px 0 0", pb: "env(safe-area-inset-bottom)" },
           }}
         >
           <Box sx={{ p: 2 }}>
@@ -1010,6 +1045,7 @@ export default function MainApp() {
             </List>
           </Box>
         </Drawer>
+
         <ShiftDrawer
           open={openMenu}
           onClose={() => setOpenMenu(false)}
@@ -1020,6 +1056,7 @@ export default function MainApp() {
           onEditJobRequest={handleOpenJobEdit}
           onAddJobRequest={handleOpenJobAdd}
         />
+
         {editShift && (
           <ShiftEditModal
             open={!!editShift}
@@ -1030,6 +1067,7 @@ export default function MainApp() {
             onDelete={handleDeleteShift}
           />
         )}
+
         <JobEditDialog
           open={jobDialogOpen}
           onClose={() => setJobDialogOpen(false)}
@@ -1037,6 +1075,7 @@ export default function MainApp() {
           members={members}
           onSave={handleSaveJob}
         />
+
         <ReloadPrompt />
       </Container>
     </ThemeProvider>

@@ -87,7 +87,7 @@ export const INITIAL_SHOPPING = {
 export const INITIAL_SETTINGS = {
   calcMode: "realtime",
   location: PREFECTURES[7],
-  targetLimit: 1030000,
+  targetLimit: 1230000,
   targetMemberId: "me", // ★追加: 扶養計算の対象者
   calcTiming: "realtime",
   transferBase: "next_month",

@@ -39,7 +39,7 @@ import {
   RadioButtonUnchecked,
   Close,
 } from "@mui/icons-material";
-import AdSenseBanner from "./AdSenseBanner";
+import AdSenseBanner from "../../../components/AdSenseBanner";
 import { format, formatDistanceToNow, parseISO, isSameMonth } from "date-fns";
 import { ja } from "date-fns/locale";
 

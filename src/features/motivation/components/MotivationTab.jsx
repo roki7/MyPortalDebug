@@ -33,7 +33,7 @@ import {
 } from "@mui/icons-material";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { format } from "date-fns";
-import AdSenseBanner from "./AdSenseBanner";
+import AdSenseBanner from "../../../components/AdSenseBanner";
 
 export default function MotivationTab({
   currentEarnings,
