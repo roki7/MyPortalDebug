@@ -23,7 +23,7 @@ import {
 import { isHoliday } from "holiday-jp";
 
 import { useAuth } from "../../../AuthContext";
-import AdSenseBanner from "../../../components/ads/AdSenseBanner";
+import AdSenseBanner from "../../../components/AdSenseBanner";
 
 const getWeatherIcon = (code) => {
   if (code === undefined) return null;
@@ -73,7 +73,6 @@ export default function CalendarTab({
 
   // --- スワイプ判定ロジック ---
   const touchStartRef = useRef(null);
-  const didVerticalScrollRef = useRef(false);
   const minSwipeDistance = 30; // 感度を上げました(50→30)
 
   const onTouchStart = (e) => {
@@ -81,32 +80,10 @@ export default function CalendarTab({
       x: e.touches[0].clientX,
       y: e.touches[0].clientY,
     };
-    didVerticalScrollRef.current = false;
-  };
-
-  const onTouchMove = (e) => {
-    if (!touchStartRef.current) return;
-    // 縦スクロールが発生しているかを判定（スクロール中の誤スワイプ検出防止）
-    const now = {
-      x: e.touches[0].clientX,
-      y: e.touches[0].clientY,
-    };
-    const dx = touchStartRef.current.x - now.x;
-    const dy = touchStartRef.current.y - now.y;
-    if (Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) {
-      didVerticalScrollRef.current = true;
-    }
   };
 
   const onTouchEnd = (e) => {
     if (!touchStartRef.current) return;
-
-    // 縦スクロールしていた場合はスワイプ判定しない
-    if (didVerticalScrollRef.current) {
-      didVerticalScrollRef.current = false;
-      touchStartRef.current = null;
-      return;
-    }
 
     const touchEnd = {
       x: e.changedTouches[0].clientX,
@@ -136,13 +113,8 @@ export default function CalendarTab({
   return (
     <Box
       onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
       sx={{
-        // Mobile scroll stability: keep vertical scrolling responsive even with swipe handlers.
-        touchAction: "pan-y",
-        WebkitOverflowScrolling: "touch",
-        overscrollBehaviorY: "contain",
         height: isPremium ? "calc(100dvh - 120px)" : "calc(100dvh - 200px)",
         overflowY: "auto",
         overflowX: "hidden", // 横スクロールを物理的に禁止

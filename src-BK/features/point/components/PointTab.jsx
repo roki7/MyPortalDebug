@@ -23,7 +23,7 @@ import {
 import { useAuth } from "../../../AuthContext";
 import { doc, updateDoc, increment } from "firebase/firestore";
 import { db } from "../../../firebase";
-import AdSenseBanner from "../../../components/ads/AdSenseBanner";
+import AdSenseBanner from "../../../components/AdSenseBanner";
 
 // スロットの絵柄
 const SYMBOLS = ["🍒", "🔔", "⭐", "7️⃣", "🍇"];
@@ -302,11 +302,6 @@ export default function PointTab() {
             ))}
           </Box>
 
-          {!isOnline && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              オフラインのため、スロット機能は無効です。
-            </Alert>
-          )}
           {resultMessage && (
             <Alert
               severity={winAmount > 0 ? "success" : "info"}

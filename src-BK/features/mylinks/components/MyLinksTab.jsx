@@ -36,7 +36,7 @@ import {
   Settings,
   Link as LinkIcon,
 } from "@mui/icons-material";
-import AdSenseBanner from "../../../components/ads/AdSenseBanner";
+import AdSenseBanner from "../../../components/AdSenseBanner";
 
 export default function MyLinksTab({
   myLinks,

@@ -277,8 +277,16 @@ export default function MainApp() {
   };
 
   const handleToggleHeader = () => setExpandedHeader((prev) => !prev);
-  const handlePrevMonth = () => setCurrentDate(subMonths(currentDate, 1));
-  const handleNextMonth = () => setCurrentDate(addMonths(currentDate, 1));
+  const handlePrevMonth = () => {
+    const d = subMonths(currentDate, 1);
+    const min = new Date(new Date().getFullYear() - (isPremium ? 7 : 1), 0, 1);
+    setCurrentDate(d < min ? min : d);
+  };
+  const handleNextMonth = () => {
+    const d = addMonths(currentDate, 1);
+    const max = new Date(new Date().getFullYear(), 11, 1);
+    setCurrentDate(d > max ? max : d);
+  };
 
   const handleOpenMonthPicker = () => {
     setPickerYear(currentDate.getFullYear());
@@ -286,7 +294,9 @@ export default function MainApp() {
     setMonthPickerOpen(true);
   };
   const handleJumpToMonth = () => {
-    const y = Number(pickerYear) || new Date().getFullYear();
+    const nowY = new Date().getFullYear();
+    const minY = nowY - (isPremium ? 7 : 1);
+    const y = Math.min(nowY, Math.max(minY, Number(pickerYear) || nowY));
     const m = Math.min(12, Math.max(1, Number(pickerMonth) || 1));
     setCurrentDate(new Date(y, m - 1, 1));
     setMonthPickerOpen(false);
@@ -666,7 +676,7 @@ export default function MainApp() {
                   mt: 1,
                 }}
               >
-                <Box>
+                <Box sx={{ flex: 1 }}>
                   <Typography variant="caption">{realtimeLabel}</Typography>
                   <Typography variant="h6" fontWeight="bold">
                     ¥{currentRealtimeEarnings.toLocaleString()}
@@ -675,7 +685,7 @@ export default function MainApp() {
                 <Box sx={{ width: 100, height: 100 }}>
                   <AnalogClock currentTheme={currentTheme} isNeon={isNeon} />
                 </Box>
-                <Box sx={{ textAlign: "right" }}>
+                <Box sx={{ flex: 1, textAlign: "right" }}>
                   <Typography variant="caption">着地見込み</Typography>
                   <Typography variant="h6">
                     ¥{uiValues.currentProjected?.toLocaleString() || 0}
@@ -873,19 +883,7 @@ export default function MainApp() {
             />
           )}
           {tabIndex === 4 && (
-            <ReportTab
-              // 扶養（制限）チャート: 設定の扶養対象メンバーのみ
-              fuyoAnnualIncome={fuyoAnnualIncome}
-              fuyoTargetLimit={settings.targetLimit}
-              // 年間収入推移: 年を選択でき、世帯合算スイッチに連動
-              reportYear={reportYear}
-              onChangeReportYear={setReportYear}
-              isHousehold={isHousehold}
-              monthlyIncomeData={trendMonthlyIncomeData}
-              prevYearMonthlyIncomeData={trendPrevYearMonthlyIncomeData}
-              accounts={accounts}
-              totalFixedCost={totalFixedCost}
-            />
+            <ReportTab shifts={shifts} jobs={jobs} settings={settings} accounts={accounts} totalFixedCost={totalFixedCost} isHousehold={isHousehold} isPremium={isPremium} />
           )}
           {tabIndex === 5 && (
             <MotivationTab

@@ -46,7 +46,7 @@ import {
 } from "@mui/icons-material";
 import { format, subDays, setDate } from "date-fns";
 import { ja } from "date-fns/locale";
-import AdSenseBanner from "../../../components/ads/AdSenseBanner";
+import AdSenseBanner from "../../../components/AdSenseBanner";
 
 export default function FinanceTab({
   accounts,

@@ -1,300 +1,237 @@
 import React, { useMemo, useState } from "react";
 import {
   Box,
-  Card,
-  CardContent,
+  Paper,
   Typography,
-  Grid,
-  LinearProgress,
-  useTheme,
+  Divider,
   Switch,
   FormControlLabel,
-  Stack,
   Button,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Divider,
 } from "@mui/material";
-import {
-  ResponsiveContainer,
-  ComposedChart,
-  Bar,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-} from "recharts";
-import AdSenseBanner from "../../../components/AdSenseBanner";
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from "recharts";
+import AdSenseBanner from "../../../components/ads/AdSenseBanner";
+import { calculateAnnualIncome, getAnnualMonthlyIncome } from "../../../logic";
+
+function filterShiftsByTargetMember(shifts, targetMemberId) {
+  if (!shifts || typeof shifts !== "object") return {};
+  if (!targetMemberId) return shifts;
+  const filtered = {};
+  for (const [dateStr, dayShifts] of Object.entries(shifts)) {
+    if (!Array.isArray(dayShifts)) {
+      filtered[dateStr] = dayShifts;
+      continue;
+    }
+    filtered[dateStr] = dayShifts.filter((s) => {
+      if (s?.memberId == null) return true;
+      return String(s.memberId) === String(targetMemberId);
+    });
+  }
+  return filtered;
+}
+
 export default function ReportTab({
-  // 扶養（制限）チャート
-  fuyoAnnualIncome = 0,
-  fuyoTargetLimit = 1230000,
-
-  // 年間収入推移
-  reportYear = new Date().getFullYear(),
-  onChangeReportYear = () => {},
-  isHousehold = false,
-  monthlyIncomeData = [],
-  prevYearMonthlyIncomeData = [],
-
-  // その他
+  shifts = {},
+  jobs = [],
+  settings = {},
   accounts = [],
   totalFixedCost = 0,
+  isHousehold = false,
+  isPremium = false,
 }) {
-  const theme = useTheme();
-  const isDark = theme.palette.mode === "dark";
+  const nowYear = new Date().getFullYear();
+  const minYear = nowYear - (isPremium ? 7 : 1);
 
-  const [showForecast, setShowForecast] = useState(false);
-  const [yearDialogOpen, setYearDialogOpen] = useState(false);
-  const [tempYear, setTempYear] = useState(reportYear);
+  // 年間収入推移の表示年（ヘッダーとは独立）
+  const [reportYear, setReportYear] = useState(nowYear);
+  const [yearPickerOpen, setYearPickerOpen] = useState(false);
 
-  const thisYear = new Date().getFullYear();
-  const currentMonth = new Date().getMonth(); // 0-11
+  // 見込み表示（直近3か月平均）トグル
+  const [showForecast, setShowForecast] = useState(true);
 
-  const yearOptions = useMemo(() => {
-    const base = thisYear;
-    // 直近±5年
-    return Array.from({ length: 11 }, (_, i) => base - 5 + i);
-  }, [thisYear]);
+  // 年の範囲をクランプ（無料は過去1年、プレミアムは過去7年まで）
+  const effectiveYear = Math.max(minYear, Math.min(nowYear, reportYear));
 
-  // 年間収入推移用のデータ（必要なら見込みを追加）
-  const chartData = useMemo(() => {
-    const src = Array.isArray(monthlyIncomeData) ? monthlyIncomeData : [];
-    const prev = Array.isArray(prevYearMonthlyIncomeData)
-      ? prevYearMonthlyIncomeData
-      : [];
-
-    const data = src.map((d, idx) => ({
-      month: d.month ?? `${idx + 1}月`,
-      income: Number(d.income) || 0,
-      forecast: null,
+  // 年間収入推移（本人/世帯）
+  const monthlyIncomeData = useMemo(() => {
+    const y = effectiveYear;
+    const raw = getAnnualMonthlyIncome(shifts, jobs, y) || [];
+    return raw.map((r) => ({
+      ...r,
+      income: isHousehold ? (r.householdIncome ?? 0) : (r.personalIncome ?? 0),
     }));
+  }, [shifts, jobs, effectiveYear, isHousehold]);
 
-    // 見込み表示は「現在年」を見ている時だけ有効
-    if (!showForecast || reportYear !== thisYear) return data;
-
-    // 直近3ヶ月平均（年跨ぎ対応）
-    const combined = [...prev, ...src].map((d) => Number(d?.income) || 0);
-    const end = 12 + currentMonth; // combined index
-    const last3 = [];
-    for (let k = 1; k <= 3; k++) {
-      const v = combined[end - k];
-      if (typeof v === "number" && !Number.isNaN(v)) last3.push(v);
+  // 見込み表示：直近3か月平均（年跨ぎ対応）
+  const forecastValue = useMemo(() => {
+    if (!showForecast) return null;
+    // selected yearの「12月」までを対象…ではなく、常に「現在時点の直近3か月平均」を出す方が直感的
+    // ただし「年跨ぎで計算されない」問題の対策として、年を跨いでも取得できるようにする
+    const ref = new Date();
+    const months = [];
+    for (let i = 1; i <= 3; i++) {
+      const d = new Date(ref.getFullYear(), ref.getMonth() - i, 1);
+      const y = d.getFullYear();
+      const m = d.getMonth() + 1; // 1-12
+      const arr = getAnnualMonthlyIncome(shifts, jobs, y) || [];
+      const row = arr.find((x) => Number(x.month) === m);
+      months.push(row ? (isHousehold ? (row.householdIncome ?? 0) : (row.personalIncome ?? 0)) : 0);
     }
-    const avg = last3.length
-      ? last3.reduce((a, b) => a + b, 0) / last3.length
-      : 0;
+    const avg = months.reduce((a, b) => a + b, 0) / 3;
+    return Math.round(avg);
+  }, [showForecast, shifts, jobs, isHousehold]);
 
-    // 現在月より後ろを見込み（月収=avg）として表示
-    for (let m = currentMonth + 1; m < data.length; m++) {
-      data[m].forecast = avg;
-    }
-    return data;
-  }, [
-    monthlyIncomeData,
-    prevYearMonthlyIncomeData,
-    showForecast,
-    reportYear,
-    thisYear,
-    currentMonth,
-  ]);
+  // 扶養範囲チャート：設定の対象メンバーのみ（世帯スイッチとは連動しない）
+  const targetMemberId = settings?.targetMemberId ?? "me";
+  const targetLimit = Number(settings?.targetLimit ?? 1230000);
+  const targetShifts = useMemo(
+    () => filterShiftsByTargetMember(shifts, targetMemberId),
+    [shifts, targetMemberId]
+  );
 
-  const fuyoProgress = useMemo(() => {
-    const limit = Number(fuyoTargetLimit) || 0;
-    const income = Number(fuyoAnnualIncome) || 0;
-    if (limit <= 0) return 0;
-    return Math.min(100, Math.max(0, (income / limit) * 100));
-  }, [fuyoTargetLimit, fuyoAnnualIncome]);
+  const fuyoAnnualIncome = useMemo(() => {
+    const res = calculateAnnualIncome(targetShifts, jobs, effectiveYear);
+    // calculateAnnualIncome は { personal, household } 形式を返すことが多いので personal を採用
+    return Number(res?.personal ?? 0);
+  }, [targetShifts, jobs, effectiveYear]);
+
+  const remaining = Math.max(0, targetLimit - fuyoAnnualIncome);
+  const percent = targetLimit > 0 ? Math.min(100, (fuyoAnnualIncome / targetLimit) * 100) : 0;
+
+  const yearButtons = useMemo(() => {
+    const years = [];
+    for (let y = nowYear; y >= minYear; y--) years.push(y);
+    return years;
+  }, [nowYear, minYear]);
 
   return (
-    <Box>
-      <Grid container spacing={2}>
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" fontWeight="bold">
-                扶養範囲チャート
-              </Typography>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ mt: 0.5 }}
-              >
-                ※
-                世帯合算スイッチとは独立して、設定で選んだ「扶養対象メンバー」の給料だけで計算します
-              </Typography>
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      {/* 年間収入推移 */}
+      <Paper sx={{ p: 2 }}>
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+            <Typography variant="h6" fontWeight="bold">
+              年間収入推移
+            </Typography>
 
-              <Box sx={{ mt: 2 }}>
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  alignItems="baseline"
-                >
-                  <Typography variant="body2">年収（対象）</Typography>
-                  <Typography variant="h6" fontWeight="bold">
-                    ¥{Number(fuyoAnnualIncome || 0).toLocaleString()}
-                  </Typography>
-                </Stack>
-
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  alignItems="baseline"
-                  sx={{ mt: 0.5 }}
-                >
-                  <Typography variant="body2">扶養上限</Typography>
-                  <Typography variant="body2">
-                    ¥{Number(fuyoTargetLimit || 0).toLocaleString()}
-                  </Typography>
-                </Stack>
-
-                <LinearProgress
-                  variant="determinate"
-                  value={fuyoProgress}
-                  sx={{ mt: 1.5, height: 10, borderRadius: 5 }}
-                />
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={{ mt: 0.5, display: "block" }}
-                >
-                  進捗: {fuyoProgress.toFixed(1)}%
-                </Typography>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Stack
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                sx={{ mb: 1 }}
-              >
-                <Stack direction="row" alignItems="center" spacing={1}>
-                  <Typography variant="h6" fontWeight="bold">
-                    年間収入推移
-                  </Typography>
-                  <Button
-                    variant="text"
-                    size="small"
-                    sx={{ minWidth: 0, px: 1 }}
-                    onClick={() => {
-                      setTempYear(reportYear);
-                      setYearDialogOpen(true);
-                    }}
-                  >
-                    {reportYear}年
-                  </Button>
-                  <Typography variant="caption" color="text.secondary">
-                    {isHousehold ? "世帯" : "本人"}
-                  </Typography>
-                </Stack>
-
-                <FormControlLabel
-                  control={
-                    <Switch
-                      size="small"
-                      checked={showForecast}
-                      onChange={(e) => setShowForecast(e.target.checked)}
-                    />
-                  }
-                  label="見込み表示"
-                />
-              </Stack>
-
-              <Divider sx={{ mb: 2 }} />
-
-              <Box sx={{ width: "100%", height: 320, minWidth: 0 }}>
-                <ResponsiveContainer>
-                  <ComposedChart
-                    data={chartData}
-                    margin={{ top: 8, right: 16, left: 0, bottom: 8 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <Tooltip
-                      formatter={(v, name) => [
-                        `¥${Number(v || 0).toLocaleString()}`,
-                        name === "income" ? "実績" : "見込み",
-                      ]}
-                    />
-                    <Legend />
-                    <Bar dataKey="income" name="実績" />
-                    <Line
-                      type="monotone"
-                      dataKey="forecast"
-                      name="見込み(月収)"
-                      dot={false}
-                      strokeWidth={2}
-                      connectNulls
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </Box>
-
-              {/* 広告（存在する場合のみ表示される想定） */}
-              <Box sx={{ mt: 2 }}>
-                <AdSenseBanner slotId="report" />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
-      <Dialog
-        open={yearDialogOpen}
-        onClose={() => setYearDialogOpen(false)}
-        fullWidth
-        maxWidth="xs"
-      >
-        <DialogTitle>表示年を変更</DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <FormControl fullWidth>
-            <InputLabel>年</InputLabel>
-            <Select
-              label="年"
-              value={tempYear}
-              onChange={(e) => setTempYear(Number(e.target.value))}
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => setYearPickerOpen(true)}
+              sx={{ borderRadius: 999, px: 1.5 }}
             >
-              {yearOptions.map((y) => (
-                <MenuItem key={y} value={y}>
-                  {y}年
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ mt: 1, display: "block" }}
-          >
-            ※ ヘッダーの年月とは独立して切り替わります
+              <Typography variant="h6" fontWeight="bold" sx={{ lineHeight: 1 }}>
+                {effectiveYear}年
+              </Typography>
+            </Button>
+          </Box>
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={showForecast}
+                onChange={(e) => setShowForecast(e.target.checked)}
+                size="small"
+              />
+            }
+            label={<Typography variant="body2">見込み表示</Typography>}
+            sx={{ m: 0 }}
+          />
+        </Box>
+
+        {showForecast && (
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            直近3か月平均: ¥{(forecastValue ?? 0).toLocaleString()}
           </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setYearDialogOpen(false)}>キャンセル</Button>
-          <Button
-            variant="contained"
-            onClick={() => {
-              onChangeReportYear(tempYear);
-              setYearDialogOpen(false);
+        )}
+
+        <Divider sx={{ my: 2 }} />
+
+        <Box sx={{ width: "100%", minWidth: 0, height: 320 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={monthlyIncomeData}>
+              <XAxis dataKey="month" />
+              <YAxis />
+              <Tooltip />
+              <Line type="monotone" dataKey="income" dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Box>
+      </Paper>
+
+      {/* スポンサーリンク（枠を分離） */}
+      <Paper sx={{ p: 2 }}>
+        <Typography variant="caption" color="text.secondary">
+          スポンサーリンク
+        </Typography>
+        <Box sx={{ mt: 1 }}>
+          <AdSenseBanner slotId="1234567890" />
+        </Box>
+      </Paper>
+
+      {/* 扶養範囲 */}
+      <Paper sx={{ p: 2 }}>
+        <Typography variant="h6" fontWeight="bold">
+          扶養範囲チャート
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          対象: {targetMemberId === "me" ? "本人" : "メンバー"} / 上限: ¥{targetLimit.toLocaleString()}
+        </Typography>
+
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="body2">
+            現在: ¥{fuyoAnnualIncome.toLocaleString()}（残り ¥{remaining.toLocaleString()}）
+          </Typography>
+          <Box
+            sx={{
+              mt: 1,
+              height: 10,
+              borderRadius: 999,
+              bgcolor: "divider",
+              overflow: "hidden",
             }}
           >
-            変更
-          </Button>
+            <Box sx={{ height: "100%", width: `${percent}%`, bgcolor: "primary.main" }} />
+          </Box>
+        </Box>
+      </Paper>
+
+      {/* 年選択（直感的: 年ボタン） */}
+      <Dialog open={yearPickerOpen} onClose={() => setYearPickerOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle>表示する年を選択</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 1,
+            }}
+          >
+            {yearButtons.map((y) => (
+              <Button
+                key={y}
+                variant={y === effectiveYear ? "contained" : "outlined"}
+                onClick={() => {
+                  setReportYear(y);
+                  setYearPickerOpen(false);
+                }}
+              >
+                {y}
+              </Button>
+            ))}
+          </Box>
+
+          {!isPremium && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 2 }}>
+              無料プランは過去1年まで閲覧できます（プレミアムは過去7年）。
+            </Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setYearPickerOpen(false)}>閉じる</Button>
         </DialogActions>
       </Dialog>
     </Box>

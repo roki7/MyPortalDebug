@@ -23,7 +23,7 @@ import {
 import { isHoliday } from "holiday-jp";
 
 import { useAuth } from "../../../AuthContext";
-import AdSenseBanner from "../../../components/AdSenseBanner";
+import AdSenseBanner from "../../../components/ads/AdSenseBanner";
 
 const getWeatherIcon = (code) => {
   if (code === undefined) return null;
@@ -117,6 +117,9 @@ export default function CalendarTab({
       sx={{
         height: isPremium ? "calc(100dvh - 120px)" : "calc(100dvh - 200px)",
         overflowY: "auto",
+        WebkitOverflowScrolling: "touch",
+        touchAction: "pan-y",
+        overscrollBehaviorY: "contain",
         overflowX: "hidden", // 横スクロールを物理的に禁止
         overscrollBehaviorX: "none", // ブラウザの戻る進む挙動を禁止
         width: "100%",
